@@ -1,7 +1,7 @@
 addon.name      = 'CrystalBuff';
 addon.author    = 'Seekey';
-addon.version   = '0.1';
-addon.desc      = 'Tracks current zone and buff information.';
+addon.version   = '0.2';
+addon.desc      = 'Tracks Signet, Sanction, or Sigil buff and current zone information.';
 addon.link      = 'https://github.com/seekey13/CrystalBuff';
 
 require('common');
@@ -9,33 +9,34 @@ require('common');
 local last_zone = nil
 local last_buffs = {}
 
--- Helper to get zone name from ID
+-- IDs for Signet, Sanction, and Sigil
+local tracked_buffs = {
+    [118] = 'Signet',
+    [119] = 'Sanction',
+    [120] = 'Sigil'
+}
+
 local function get_zone_name(zone_id)
     return AshitaCore:GetResourceManager():GetString('zones.names', zone_id) or ('Unknown Zone [' .. tostring(zone_id) .. ']')
 end
 
--- Helper to get buff name from ID
-local function get_buff_name(buff_id)
-    return AshitaCore:GetResourceManager():GetString('buffs.names', buff_id) or ('BuffID: ' .. tostring(buff_id))
-end
-
--- Print zone and buffs
+-- Print zone and only the tracked buff if present
 local function print_status()
     local zone_id = AshitaCore:GetMemoryManager():GetZone():GetZoneId()
     local zone_name = get_zone_name(zone_id)
     print(('[CrystalBuff] Current Zone: %s (%u)'):format(zone_name, zone_id))
 
     local buffs = AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
-    local buff_names = {}
+    local found_buff = nil
     for _, buff_id in ipairs(buffs) do
-        if buff_id > 0 then
-            table.insert(buff_names, get_buff_name(buff_id))
+        if tracked_buffs[buff_id] then
+            found_buff = tracked_buffs[buff_id]
+            break
         end
     end
-    print('[CrystalBuff] Current Buffs: ' .. (next(buff_names) and table.concat(buff_names, ', ') or 'None'))
+    print('[CrystalBuff] Crystal Buff: ' .. (found_buff or 'None'))
 end
 
--- Listen for zone change
 ashita.events.register('packet_in', 'cb_packet_in', function(e)
     if (e.id == 0x0A) then
         local zone_id = AshitaCore:GetMemoryManager():GetZone():GetZoneId()
@@ -46,7 +47,6 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
     end
 end)
 
--- Listen for buff changes (check every 2 seconds)
 ashita.tasks.repeating(2, 0, 2, function()
     local buffs = AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
     local changed = false
