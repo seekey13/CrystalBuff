@@ -81,3 +81,6 @@ Open an issue or pull request on the [GitHub repository](https://github.com/seek
 ## Special Thanks
 
 [Commandobill](https://github.com/commandobill), [Xenonsmurf](https://github.com/Xenonsmurf), [atom0s](https://github.com/atom0s), and [Carver](https://github.com/CatsEyeXI)
+
+Completely unnecessary AI generated image  
+<img width="200" height="200" alt="CrystalBuff-transparent" src="https://github.com/user-attachments/assets/7be56b46-c39f-4234-8e8b-d8c7cb3b5fd0" />
