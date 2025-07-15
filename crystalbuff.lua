@@ -9,7 +9,7 @@ This addon is designed for Ashita v4 and the CatsEyeXI private server.
 
 addon.name      = 'CrystalBuff';
 addon.author    = 'Seekey';
-addon.version   = '0.7';
+addon.version   = '0.8';
 addon.desc      = 'Tracks and corrects crystal buff (Signet, Sanction, Sigil) based on current zone.';
 addon.link      = 'https://github.com/seekey13/CrystalBuff';
 
@@ -83,8 +83,16 @@ local function buffs_changed(new, old)
     return false
 end
 
+-- Checks if the world is ready (not zoning, player entity exists)
+local function is_world_ready()
+    local p = AshitaCore:GetMemoryManager():GetPlayer()
+    local e = GetPlayerEntity and GetPlayerEntity()
+    return p and not p.isZoning and e
+end
+
 local function print_status_and_correct()
-    local zone_id = AshitaCore:GetMemoryManager():GetZone():GetZoneId()
+    -- Use the robust method from zonename/unityroEZ: Party->GetMemberZone(0)
+    local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
     local zone_name = get_zone_name(zone_id)
     local required_buff = get_required_buff(zone_id)
 
@@ -117,22 +125,50 @@ ashita.events.register('load', 'cb_load', function()
     if ok and type(buffs) == "table" then
         last_buffs = {table.unpack(buffs)}
     end
-    print_status_and_correct()
+    if is_world_ready() then
+        print_status_and_correct()
+    else
+        -- Wait until world is ready, then check
+        ashita.tasks.once(2, function()
+            if is_world_ready() then
+                print_status_and_correct()
+            end
+        end)
+    end
 end)
 
+-- Use "zone finished loading" (0x01B) or "zone changed" (0x0A) - with robust world ready check and delay
 ashita.events.register('packet_in', 'cb_packet_in', function(e)
-    -- Use 0x01B for "zone finished loading" instead of 0x0A which was zone changed.
-    if (e.id == 0x01B) then
-        local zone_id = AshitaCore:GetMemoryManager():GetZone():GetZoneId()
-        if zone_id ~= last_zone then
-            last_zone = zone_id
-            print_status_and_correct()
+    if e.id == 0x0A then
+        -- On zone change, wait a moment for memory to update and ensure world is ready, then check
+        local moghouse = struct.unpack('b', e.data, 0x80 + 1)
+        if moghouse ~= 1 then
+            coroutine.sleep(1)
+            if is_world_ready() then
+                local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+                if zone_id ~= last_zone then
+                    last_zone = zone_id
+                    print_status_and_correct()
+                end
+            end
+        end
+    elseif e.id == 0x01B then
+        -- Some servers fire this only after fully loaded; double check world ready
+        coroutine.sleep(0.5)
+        if is_world_ready() then
+            local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+            if zone_id ~= last_zone then
+                last_zone = zone_id
+                print_status_and_correct()
+            end
         end
     elseif (e.id == 0x063 or e.id == 0x037) then
         local buffs = AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
         if buffs_changed(buffs, last_buffs) then
             last_buffs = {table.unpack(buffs)}
-            print_status_and_correct()
+            if is_world_ready() then
+                print_status_and_correct()
+            end
         end
     end
 end)
