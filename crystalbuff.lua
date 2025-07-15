@@ -20,6 +20,10 @@ local last_buffs = {}
 local last_command_time = 0
 local COMMAND_COOLDOWN = 10 -- seconds; rate limit for issuing correction commands
 
+-- RoE mask packet constants
+local PKT_ROE_MASK = 0x112
+local MASK_OFFSET_BYTE = 133
+
 -- Buff IDs for Signet, Sanction, and Sigil.
 local tracked_buffs = {
     [253] = 'Signet',
@@ -129,6 +133,8 @@ local function is_world_ready()
     return p and not p.isZoning and e
 end
 
+
+
 -- Main logic: prints status and issues a buff command if needed.
 local function print_status_and_correct()
     local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
@@ -192,10 +198,15 @@ ashita.events.register('load', 'cb_load', function()
         last_buffs = {}
     end
     if is_world_ready() then
-        print_status_and_correct()
+        -- Wait for naturally occurring RoE mask packets
+        ashita.tasks.once(3, function()
+            if is_world_ready() then
+                print_status_and_correct()
+            end
+        end)
     else
         -- Wait until world is ready, then check
-        ashita.tasks.once(2, function()
+        ashita.tasks.once(5, function()
             if is_world_ready() then
                 print_status_and_correct()
             end
@@ -208,10 +219,18 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
     if e.id == 0x0A then
         local moghouse = struct.unpack('b', e.data, 0x80 + 1)
         if moghouse ~= 1 then
-            coroutine.sleep(1)
-            if is_world_ready() then
-                handle_zone_event()
-            end
+            -- Wait a bit before checking, similar to load event
+            ashita.tasks.once(3, function()
+                if is_world_ready() then
+                    handle_zone_event()
+                end
+            end)
+        end
+    elseif e.id == PKT_ROE_MASK then
+        -- Check offset from RoE mask packet, only trigger on offset == 3
+        local offset = struct.unpack('H', e.data, MASK_OFFSET_BYTE)
+        if offset == 3 then
+            handle_zone_event()
         end
     elseif (e.id == 0x063 or e.id == 0x037) then
         local buffs = AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
