@@ -50,30 +50,19 @@ local required_buff_commands = {
 
 -- Table of city and non-combat zone IDs 
 local non_combat_zones = {
-    -- San d'Oria
-    [230]=true, [231]=true, [232]=true, [233]=true,
-    -- Bastok
-    [234]=true, [235]=true, [236]=true, [237]=true,
-    -- Windurst
-    [238]=true, [239]=true, [240]=true, [241]=true, [242]=true,
-    -- Jeuno
-    [243]=true, [244]=true, [245]=true, [246]=true,
-    -- WotG Cities of the past
-    [80]=true, [87]=true, [94]=true,
-    -- Aht Urhgan cities/towns
-    [48]=true, [50]=true, [53]=true,  -- Al Zahbi, Aht Urhgan Whitegate, Nashmau
-    -- Tavnazian Safehold, Rabao, Selbina, Mhaura, Kazham, Norg
-    [26]=true, [247]=true, [248]=true, [249]=true, [250]=true, [252]=true,
-    -- Adoulin
-    [256]=true, [257]=true,
-    -- Mog House / Residential Area / Mog Garden
+    [230]=true, [231]=true, [232]=true, [233]=true,  -- San d'Oria
+    [234]=true, [235]=true, [236]=true, [237]=true,  -- Bastok
+    [238]=true, [239]=true, [240]=true, [241]=true, [242]=true,  -- Windurst
+    [243]=true, [244]=true, [245]=true, [246]=true,  -- Jeuno
+    [80]=true, [87]=true, [94]=true,  -- WotG Cities of the past (San d'Oria [S], Bastok [S], Windurst [S]
+    [48]=true, [50]=true, [53]=true,  -- Aht Urhgan cities/towns (Al Zahbi, Aht Urhgan Whitegate, Nashmau)
+    [26]=true, [247]=true, [248]=true, [249]=true, [250]=true, [252]=true,  -- Other Towns (Tavnazian Safehold, Rabao, Selbina, Mhaura, Kazham, Norg)
+    [256]=true, [257]=true,  -- Adoulin
     [280]=true, -- Mog Garden
-    -- Transportation zones (ships, airships)
     [46]=true, [47]=true, -- Open sea routes
     [220]=true, [221]=true, -- Ships bound for Selbina/Mhaura
     [223]=true, [224]=true, [225]=true, [226]=true, -- Airships
     [227]=true, [228]=true, -- Ships with Pirates (still safe zones)
-    -- Special safe zones
     [70]=true, -- Chocobo Circuit
     [251]=true, -- Hall of the Gods
     [284]=true, -- Celennia Memorial Library
