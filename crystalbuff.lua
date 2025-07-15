@@ -232,7 +232,7 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
         if offset == 3 then
             handle_zone_event()
         end
-    elseif (e.id == 0x063 or e.id == 0x037) then
+    elseif e.id == 0x037 then
         local buffs = AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
         if buffs_changed(buffs, last_buffs) then
             if type(buffs) == "userdata" then
@@ -247,7 +247,12 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
             else
                 last_buffs = buffs
             end
-            if is_world_ready() then
+            -- Only check if we don't have the correct buff or lost a crystal buff
+            local current_buff = get_current_buff(buffs)
+            local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+            local required_buff = get_required_buff(zone_id)
+            
+            if is_world_ready() and (not current_buff or current_buff ~= required_buff) then
                 print_status_and_correct()
             end
         end
