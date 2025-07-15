@@ -47,12 +47,11 @@ CrystalBuff runs silently in the background. When you change zones or your buffs
 
 ## Output
 
-CrystalBuff will print its actions in the chat log, including:
-- The current zone and required buff.
-- Your current crystal buff.
-- Any mismatches detected and corrective actions taken.
+By default, CrystalBuff runs silently in the background. The following output is only shown if you run the command:
+```
+/crystalbuff debug
+```
 
-Example output:
 ```
 [CrystalBuff] Current Zone: East Ronfaure (101)
 [CrystalBuff] Required Buff: Signet
@@ -78,6 +77,6 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 Open an issue or pull request on the [GitHub repository](https://github.com/seekey13/CrystalBuff) if you have suggestions or encounter problems.
 
-## Special Thank You
+## Special Thanks
 
 **Commandobill** and **Xenonsmurf** for their code.
