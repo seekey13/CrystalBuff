@@ -34,6 +34,21 @@ local required_buff_commands = {
     ['Sigil'] = '!sigil'
 }
 
+local non_combat_zones = {
+    [0]=true, [1]=true, [2]=true, -- San d'Oria
+    [3]=true, [4]=true, [5]=true, -- Bastok
+    [6]=true, [7]=true, [8]=true, [9]=true, -- Windurst
+    [16]=true, [17]=true, [18]=true, [246]=true, -- Jeuno
+    [50]=true, [53]=true, -- ToAU cities
+    [25]=true, -- Tavnazian Safehold
+    [32]=true, [40]=true, [41]=true, [47]=true, [56]=true, -- Small towns
+    [256]=true, [257]=true, -- Adoulin
+    [231]=true, [232]=true, [233]=true, [234]=true, [235]=true, [236]=true, [237]=true, [238]=true, [239]=true, -- Mog Houses
+    [242]=true, -- Residential Area/Mog Garden
+    [69]=true, -- Chocobo Circuit
+    [285]=true, -- Celennia Memorial Library
+}
+
 --[[
 get_required_buff:
 Zone Ranges:
@@ -123,6 +138,13 @@ local function print_status_and_correct()
     -- Use the robust method from zonename/unityroEZ: Party->GetMemberZone(0)
     local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
     local zone_name = get_zone_name(zone_id)
+
+    -- Non-combat/city zone filter
+    if non_combat_zones[zone_id] then
+        print(('[CrystalBuff] Zone "%s" (%u) is a non-combat/city zone. No buff check needed.'):format(zone_name, zone_id))
+        return
+    end
+
     local required_buff = get_required_buff(zone_id)
 
     print(('[CrystalBuff] Current Zone: %s (%u)'):format(zone_name, zone_id))
