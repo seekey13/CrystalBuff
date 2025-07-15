@@ -80,4 +80,4 @@ Open an issue or pull request on the [GitHub repository](https://github.com/seek
 
 ## Special Thanks
 
-**Commandobill** and **Xenonsmurf** for their code.
+**Commandobill**, **Xenonsmurf**, **atom0s**, and the **Ashita development team** for their code and support.
