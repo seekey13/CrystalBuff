@@ -39,11 +39,11 @@ CrystalBuff runs silently in the background. When you change zones or your buffs
 
 | Buff    | ID  | Applies In             | Command     |
 |---------|-----|------------------------|-------------|
-| Signet  | 118 | Vanilla zones (0-184)  | `!signet`   |
-| Sanction| 119 | ToAU zones (185-254)   | `!sanction` |
-| Sigil   | 120 | Past zones (255-294)   | `!sigil`    |
+| Signet  | 253 | Vanilla zones (0-184)  | `!signet`   |
+| Sanction| 256 | ToAU zones (185-254)   | `!sanction` |
+| Sigil   | 268 | Past zones (255-294)   | `!sigil`    |
 
-> **Note:** These zone ID ranges and commands are specific to CatsEyeXI.
+> **Note:** These zone ID ranges and commands may be specific to CatsEyeXI.
 
 ## Output
 
@@ -54,10 +54,10 @@ CrystalBuff will print its actions in the chat log, including:
 
 Example output:
 ```
-[CrystalBuff] Current Zone: Bastok Markets (234)
-[CrystalBuff] Required Buff: Sanction
-[CrystalBuff] Current Crystal Buff: Signet
-[CrystalBuff] Mismatch detected, issuing command: !sanction
+[CrystalBuff] Current Zone: East Ronfaure (101)
+[CrystalBuff] Required Buff: Signet
+[CrystalBuff] Current Crystal Buff: None
+[CrystalBuff] No crystal buff detected, issuing command: !signet
 ```
 
 ## Compatibility
@@ -77,3 +77,7 @@ MIT License. See [LICENSE](LICENSE) for details.
 ## Support
 
 Open an issue or pull request on the [GitHub repository](https://github.com/seekey13/CrystalBuff) if you have suggestions or encounter problems.
+
+## Special Thank You
+
+**Commandobill** and **Xenonsmurf** for their code.
