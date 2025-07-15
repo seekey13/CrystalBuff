@@ -19,6 +19,9 @@ local last_zone = nil
 local last_buffs = {}
 local last_command_time = 0
 local COMMAND_COOLDOWN = 10 -- seconds; rate limit for issuing correction commands
+local debug_mode = false -- Toggle for debug output
+local checked_no_buff_zones = {} -- Track zones where no buff is needed to avoid rechecking
+local zone_check_pending = false -- Prevent double execution on zone change
 
 -- RoE mask packet constants
 local PKT_ROE_MASK = 0x112
@@ -142,17 +145,38 @@ local function print_status_and_correct()
 
     -- Non-combat/city zone filter
     if non_combat_zones[zone_id] then
-        print(('[CrystalBuff] Zone "%s" (%u) is a non-combat/city zone. No buff check needed.'):format(zone_name, zone_id))
+        if not checked_no_buff_zones[zone_id] then
+            checked_no_buff_zones[zone_id] = true
+            if debug_mode then
+                print(('[CrystalBuff] Zone "%s" (%u) is a non-combat/city zone. No buff check needed.'):format(zone_name, zone_id))
+            end
+        end
         return
     end
 
     local required_buff = get_required_buff(zone_id)
-    print(('[CrystalBuff] Current Zone: %s (%u)'):format(zone_name, zone_id))
-    print(('[CrystalBuff] Required Buff: %s'):format(required_buff))
+    
+    -- If no buff is needed (Other), only check once
+    if required_buff == 'Other' then
+        if not checked_no_buff_zones[zone_id] then
+            checked_no_buff_zones[zone_id] = true
+            if debug_mode then
+                print(('[CrystalBuff] Zone "%s" (%u) requires no crystal buff.'):format(zone_name, zone_id))
+            end
+        end
+        return
+    end
+
+    if debug_mode then
+        print(('[CrystalBuff] Current Zone: %s (%u)'):format(zone_name, zone_id))
+        print(('[CrystalBuff] Required Buff: %s'):format(required_buff))
+    end
 
     local buffs = AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
     local found_buff = get_current_buff(buffs)
-    print('[CrystalBuff] Current Crystal Buff: ' .. (found_buff or 'None'))
+    if debug_mode then
+        print('[CrystalBuff] Current Crystal Buff: ' .. (found_buff or 'None'))
+    end
 
     if required_buff_commands[required_buff] and found_buff ~= required_buff then
         local now = os.time()
@@ -162,7 +186,9 @@ local function print_status_and_correct()
             AshitaCore:GetChatManager():QueueCommand(-1, cmd)
             last_command_time = now
         else
-            print('[CrystalBuff] Mismatch detected, but command cooldown is active.')
+            if debug_mode then
+                print('[CrystalBuff] Mismatch detected, but command cooldown is active.')
+            end
         end
     end
 end
@@ -172,7 +198,10 @@ local function handle_zone_event()
     local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
     if zone_id ~= last_zone then
         last_zone = zone_id
-        print_status_and_correct()
+        -- Clear the "no buff needed" tracking when entering a new zone
+        checked_no_buff_zones = {}
+        zone_check_pending = false -- Reset the flag for new zone
+        -- Don't call print_status_and_correct() here - let RoE packet handle it
     end
 end
 
@@ -197,21 +226,7 @@ ashita.events.register('load', 'cb_load', function()
     else
         last_buffs = {}
     end
-    if is_world_ready() then
-        -- Wait for naturally occurring RoE mask packets
-        ashita.tasks.once(3, function()
-            if is_world_ready() then
-                print_status_and_correct()
-            end
-        end)
-    else
-        -- Wait until world is ready, then check
-        ashita.tasks.once(5, function()
-            if is_world_ready() then
-                print_status_and_correct()
-            end
-        end)
-    end
+    -- Don't check immediately on load, wait for RoE mask packets like zone changes
 end)
 
 -- Only listen for 0x0A (zone change) and match the unityroEZ/zonename pattern.
@@ -219,18 +234,29 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
     if e.id == 0x0A then
         local moghouse = struct.unpack('b', e.data, 0x80 + 1)
         if moghouse ~= 1 then
-            -- Wait a bit before checking, similar to load event
-            ashita.tasks.once(3, function()
-                if is_world_ready() then
-                    handle_zone_event()
-                end
-            end)
+            zone_check_pending = true
+            -- No timer, just wait for RoE mask packet
         end
     elseif e.id == PKT_ROE_MASK then
         -- Check offset from RoE mask packet, only trigger on offset == 3
         local offset = struct.unpack('H', e.data, MASK_OFFSET_BYTE)
         if offset == 3 then
-            handle_zone_event()
+            if zone_check_pending then
+                -- Zone change triggered this
+                zone_check_pending = false
+                local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+                if zone_id ~= last_zone then
+                    last_zone = zone_id
+                    -- Only clear checked zones if we're actually changing zones
+                    checked_no_buff_zones = {}
+                end
+                print_status_and_correct()
+            elseif last_zone == nil then
+                -- Initial load triggered this
+                local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+                last_zone = zone_id
+                print_status_and_correct()
+            end
         end
     elseif e.id == 0x037 then
         local buffs = AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
@@ -252,9 +278,37 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
             local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
             local required_buff = get_required_buff(zone_id)
             
+            -- Skip if this is a non-combat zone or "Other" zone that we've already checked
+            if non_combat_zones[zone_id] or required_buff == 'Other' then
+                if checked_no_buff_zones[zone_id] then
+                    return -- Already checked this zone, don't check again
+                end
+            end
+            
+            -- Also skip if we have a pending zone check (RoE packet will handle it)
+            if zone_check_pending then
+                return
+            end
+            
             if is_world_ready() and (not current_buff or current_buff ~= required_buff) then
                 print_status_and_correct()
             end
         end
+    end
+end)
+
+-- Command handler for debug toggle
+ashita.events.register('command', 'cb_command', function(e)
+    local args = e.command:args()
+    if #args == 0 or args[1]:lower() ~= '/crystalbuff' then return end
+    
+    e.blocked = true
+    
+    if #args >= 2 and args[2]:lower() == 'debug' then
+        debug_mode = not debug_mode
+        print(('[CrystalBuff] Debug mode %s'):format(debug_mode and 'enabled' or 'disabled'))
+    else
+        print('[CrystalBuff] Commands:')
+        print('  /crystalbuff debug - Toggle debug output')
     end
 end)
