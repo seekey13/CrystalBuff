@@ -139,7 +139,7 @@ end
 
 
 -- Main logic: prints status and issues a buff command if needed.
-local function print_status_and_correct()
+local function check_and_correct_buff_status()
     local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
     local zone_name = get_zone_name(zone_id)
 
@@ -201,7 +201,7 @@ local function handle_zone_event()
         -- Clear the "no buff needed" tracking when entering a new zone
         checked_no_buff_zones = {}
         zone_check_pending = false -- Reset the flag for new zone
-        -- Don't call print_status_and_correct() here - let RoE packet handle it
+        -- Don't call check_and_correct_buff_status() here - let RoE packet handle it
     end
 end
 
@@ -250,12 +250,12 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
                     -- Only clear checked zones if we're actually changing zones
                     checked_no_buff_zones = {}
                 end
-                print_status_and_correct()
+                check_and_correct_buff_status()
             elseif last_zone == nil then
                 -- Initial load triggered this
                 local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
                 last_zone = zone_id
-                print_status_and_correct()
+                check_and_correct_buff_status()
             end
         end
     elseif e.id == 0x037 then
@@ -291,7 +291,7 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
             end
             
             if is_world_ready() and (not current_buff or current_buff ~= required_buff) then
-                print_status_and_correct()
+                check_and_correct_buff_status()
             end
         end
     end
