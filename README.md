@@ -41,7 +41,10 @@ CrystalBuff runs silently in the background. When you change zones or your buffs
 
 ## Supported Buffs
 
-`!signet` `!sanction` & `!sigil`
+
+`Signet`<img width="16" height="16" alt="Signet_29" src="https://github.com/user-attachments/assets/bf734529-5be3-454f-9c22-b9a94db5037d" />, 
+`Sanction`<img width="16" height="16" alt="Sanction_29" src="https://github.com/user-attachments/assets/a0df9583-9263-49e5-94f9-6a3a3de5d447" /> & 
+`Sigil`<img width="16" height="16" alt="Sigil_29" src="https://github.com/user-attachments/assets/0b7739d3-a903-4143-8494-bf839d22179b" />
 
 
 ## Output
