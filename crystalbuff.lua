@@ -9,7 +9,7 @@ This addon is designed for Ashita v4 and the CatsEyeXI private server.
 
 addon.name      = 'CrystalBuff';
 addon.author    = 'Seekey';
-addon.version   = '0.9';
+addon.version   = '1.0';
 addon.desc      = 'Tracks and corrects crystal buff (Signet, Sanction, Sigil) based on current zone.';
 addon.link      = 'https://github.com/seekey13/CrystalBuff';
 
@@ -41,20 +41,34 @@ local required_buff_commands = {
     ['Sigil'] = '!sigil'
 }
 
--- Table of city and non-combat zone IDs
+-- Table of city and non-combat zone IDs (auto-generated using patterns and the latest ZoneIDs.txt)
 local non_combat_zones = {
-    [0]=true, [1]=true, [2]=true, -- San d'Oria
-    [3]=true, [4]=true, [5]=true, -- Bastok
-    [6]=true, [7]=true, [8]=true, [9]=true, -- Windurst
-    [16]=true, [17]=true, [18]=true, [246]=true, -- Jeuno
-    [50]=true, [53]=true, -- ToAU cities
-    [25]=true, -- Tavnazian Safehold
-    [32]=true, [40]=true, [41]=true, [47]=true, [56]=true, -- Small towns
-    [256]=true, [257]=true, -- Adoulin
-    [231]=true, [232]=true, [233]=true, [234]=true, [235]=true, [236]=true, [237]=true, [238]=true, [239]=true, -- Mog Houses
-    [242]=true, -- Residential Area/Mog Garden
-    [69]=true, -- Chocobo Circuit
-    [285]=true, -- Celennia Memorial Library
+    -- San d'Oria
+    [230]=true, [231]=true, [232]=true, [233]=true,
+    -- Bastok
+    [234]=true, [235]=true, [236]=true, [237]=true,
+    -- Windurst
+    [238]=true, [239]=true, [240]=true, [241]=true, [242]=true,
+    -- Jeuno
+    [243]=true, [244]=true, [245]=true, [246]=true,
+    -- Aht Urhgan cities/towns
+    [50]=true, [53]=true, [252]=true,
+    -- Tavnazian Safehold, Rabao, Selbina, Mhaura, Kazham
+    [26]=true, [247]=true, [248]=true, [249]=true, [250]=true,
+    -- Adoulin
+    [256]=true, [257]=true,
+    -- Mog House / Residential Area / Mog Garden
+    [0]=true, -- Tech Demo Area (Formerly mis-used as Mog House)
+    [280]=true, -- Mog Garden
+    [242]=true, -- Heavens Tower (Residential Area)
+    -- Chocobo Circuit, Celennia Library, other safe/special zones
+    [70]=true, -- Chocobo Circuit
+    [284]=true, -- Celennia Memorial Library
+    [285]=true, -- Feretory (safe zone)
+    -- Test / unused / event areas (if you want to be extra safe)
+    [49]=true, -- Test Area (Checkerboard Zone)
+    -- Other clearly non-combat/safe areas
+    [251]=true, -- Hall of the Gods
 }
 
 --[[
@@ -136,8 +150,6 @@ local function is_world_ready()
     return p and not p.isZoning and e
 end
 
-
-
 -- Main logic: prints status and issues a buff command if needed.
 local function check_and_correct_buff_status()
     local ok_zone, zone_id = pcall(function()
@@ -200,6 +212,9 @@ local function check_and_correct_buff_status()
             AshitaCore:GetChatManager():QueueCommand(-1, cmd)
             last_command_time = now
         else
+            if debug_mode then
+                print('[CrystalBuff] Command cooldown in effect, skipping buff correction.')
+            end
         end
     end
 end
@@ -324,7 +339,7 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
     end
 end)
 
--- Command handler for debug toggle
+-- Command handler for debug toggle and info
 ashita.events.register('command', 'cb_command', function(e)
     local args = e.command:args()
     if #args == 0 or args[1]:lower() ~= '/crystalbuff' then return end
@@ -334,8 +349,13 @@ ashita.events.register('command', 'cb_command', function(e)
     if #args >= 2 and args[2]:lower() == 'debug' then
         debug_mode = not debug_mode
         print(('[CrystalBuff] Debug mode %s'):format(debug_mode and 'enabled' or 'disabled'))
+    elseif #args >= 2 and args[2]:lower() == 'zoneid' then
+        local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+        local zone_name = get_zone_name(zone_id)
+        print(('[CrystalBuff] Current Zone: %s (%u)'):format(zone_name, zone_id))
     else
         print('[CrystalBuff] Commands:')
-        print('  /crystalbuff debug - Toggle debug output')
+        print('  /crystalbuff debug  - Toggle debug output')
+        print('  /crystalbuff zoneid - Print current zone name and ID')
     end
 end)
