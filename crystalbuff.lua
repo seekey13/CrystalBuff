@@ -14,6 +14,7 @@ addon.desc      = 'Tracks and corrects crystal buff (Signet, Sanction, Sigil) ba
 addon.link      = 'https://github.com/seekey13/CrystalBuff';
 
 require('common');
+local zone_buffs = require('zone_buffs');
 
 local last_zone = nil
 local last_buffs = {}
@@ -73,22 +74,11 @@ local non_combat_zones = {
 
 --[[
 get_required_buff:
-Zone Ranges:
-  0-184   : Signet    (Vanilla, Zilart, CoP, most city/outdoor)
-  185-254 : Sanction  (Treasures of Aht Urhgan zones)
-  255-294 : Sigil     (Wings of the Goddess past zones)
-  Other   : No crystal buff expected
+Uses zone_buffs.lua to determine the required buff for a zone.
+Returns the buff type (Signet, Sanction, Sigil) or nil for zones that should be ignored.
 ]]
 local function get_required_buff(zone_id)
-    if zone_id >= 0 and zone_id <= 184 then
-        return 'Signet'
-    elseif zone_id >= 185 and zone_id <= 254 then
-        return 'Sanction'
-    elseif zone_id >= 255 and zone_id <= 294 then
-        return 'Sigil'
-    else
-        return 'Other'
-    end
+    return zone_buffs.GetZoneBuff(zone_id)
 end
 
 -- Returns the Ashita resource name for the given zone_id.
@@ -175,8 +165,8 @@ local function check_and_correct_buff_status()
 
     local required_buff = get_required_buff(zone_id)
     
-    -- If no buff is needed (Other), only check once
-    if required_buff == 'Other' then
+    -- If no buff is needed (nil), only check once
+    if not required_buff then
         if not checked_no_buff_zones[zone_id] then
             checked_no_buff_zones[zone_id] = true
             if debug_mode then
@@ -207,13 +197,18 @@ local function check_and_correct_buff_status()
     if required_buff_commands[required_buff] and found_buff ~= required_buff then
         local now = os.time()
         if (now - last_command_time) >= COMMAND_COOLDOWN then
-            local cmd = required_buff_commands[required_buff]
-            print(('[CrystalBuff] Mismatch detected, issuing command: %s'):format(cmd))
-            AshitaCore:GetChatManager():QueueCommand(-1, cmd)
+            -- Add a small fixed delay (2 seconds) to avoid conflicts with other addons
+            local delay = 2
+            ashita.tasks.once(delay, function()
+                local cmd = required_buff_commands[required_buff]
+                print(('[CrystalBuff] Mismatch detected, issuing command: %s'):format(cmd))
+                AshitaCore:GetChatManager():QueueCommand(-1, cmd)
+            end)
             last_command_time = now
         else
             if debug_mode then
-                print('[CrystalBuff] Command cooldown in effect, skipping buff correction.')
+                local remaining = COMMAND_COOLDOWN - (now - last_command_time)
+                print(('[CrystalBuff] Command cooldown in effect, %d seconds remaining.'):format(remaining))
             end
         end
     end
@@ -324,7 +319,7 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
                 return
             end
             local required_buff = get_required_buff(zone_id)
-            if non_combat_zones[zone_id] or required_buff == 'Other' then
+            if non_combat_zones[zone_id] or not required_buff then
                 if checked_no_buff_zones[zone_id] then
                     return
                 end
