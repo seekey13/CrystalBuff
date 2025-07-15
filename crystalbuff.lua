@@ -9,7 +9,7 @@ This addon is designed for Ashita v4 and the CatsEyeXI private server.
 
 addon.name      = 'CrystalBuff';
 addon.author    = 'Seekey';
-addon.version   = '0.6';
+addon.version   = '0.7';
 addon.desc      = 'Tracks and corrects crystal buff (Signet, Sanction, Sigil) based on current zone.';
 addon.link      = 'https://github.com/seekey13/CrystalBuff';
 
@@ -121,7 +121,8 @@ ashita.events.register('load', 'cb_load', function()
 end)
 
 ashita.events.register('packet_in', 'cb_packet_in', function(e)
-    if (e.id == 0x0A) then
+    -- Use 0x01B for "zone finished loading" instead of 0x0A which was zone changed.
+    if (e.id == 0x01B) then
         local zone_id = AshitaCore:GetMemoryManager():GetZone():GetZoneId()
         if zone_id ~= last_zone then
             last_zone = zone_id
