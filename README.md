@@ -47,11 +47,14 @@ CrystalBuff runs silently in the background. When you change zones or your buffs
 
 ## Output
 
-By default, CrystalBuff runs silently in the background. The following output is only shown if you run the command:
+By default, CrystalBuff runs silently in the background. 
+
+Additional zone information will display if you run the command:
 ```
 /crystalbuff debug
 ```
 
+Example:
 ```
 [CrystalBuff] Current Zone: East Ronfaure (101)
 [CrystalBuff] Required Buff: Signet
