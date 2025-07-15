@@ -22,9 +22,9 @@ local COMMAND_COOLDOWN = 10 -- seconds; rate limit for issuing correction comman
 
 -- Buff IDs for Signet, Sanction, and Sigil.
 local tracked_buffs = {
-    [118] = 'Signet',
-    [119] = 'Sanction',
-    [120] = 'Sigil'
+    [253] = 'Signet',
+    [256] = 'Sanction',
+    [268] = 'Sigil'
 }
 
 -- Chat command mapping for each buff type.
@@ -64,9 +64,23 @@ end
 
 -- Returns the first found tracked buff (only one can be active at a time).
 local function get_current_buff(buffs)
-    for _, buff_id in ipairs(buffs) do
-        if tracked_buffs[buff_id] then
-            return tracked_buffs[buff_id]
+    if not buffs then return nil end
+    
+    -- Handle both userdata and table formats
+    if type(buffs) == "userdata" then
+        -- Iterate through userdata indices
+        for i = 0, 31 do -- FFXI has max 32 buffs
+            local buff_id = buffs[i]
+            if buff_id and buff_id > 0 and tracked_buffs[buff_id] then
+                return tracked_buffs[buff_id]
+            end
+        end
+    else
+        -- Handle as table
+        for _, buff_id in ipairs(buffs) do
+            if tracked_buffs[buff_id] then
+                return tracked_buffs[buff_id]
+            end
         end
     end
     return nil
@@ -74,9 +88,24 @@ end
 
 -- Compare two buff tables for any difference.
 local function buffs_changed(new, old)
-    if #new ~= #old then return true end
-    for i = 1, #new do
-        if new[i] ~= old[i] then
+    -- Convert userdata to table if needed
+    local new_table = {}
+    local old_table = old or {}
+    
+    if type(new) == "userdata" then
+        for i = 0, 31 do
+            local buff_id = new[i]
+            if buff_id and buff_id > 0 then
+                table.insert(new_table, buff_id)
+            end
+        end
+    else
+        new_table = new or {}
+    end
+    
+    if #new_table ~= #old_table then return true end
+    for i = 1, #new_table do
+        if new_table[i] ~= old_table[i] then
             return true
         end
     end
@@ -100,6 +129,33 @@ local function print_status_and_correct()
     print(('[CrystalBuff] Required Buff: %s'):format(required_buff))
 
     local buffs = AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
+    
+    -- Debug: Print buff information to see what we're actually getting
+    if type(buffs) == "userdata" then
+        print('[CrystalBuff] DEBUG: Buffs are userdata, checking indices...')
+        local buff_list = {}
+        for i = 0, 31 do
+            local buff_id = buffs[i]
+            if buff_id and buff_id > 0 then
+                table.insert(buff_list, buff_id)
+                -- Check specifically for crystal buffs
+                if tracked_buffs[buff_id] then
+                    print('[CrystalBuff] DEBUG: Found tracked buff ' .. buff_id .. ' (' .. tracked_buffs[buff_id] .. ')')
+                end
+            end
+        end
+        if #buff_list > 0 then
+            print('[CrystalBuff] DEBUG: All active buffs: ' .. table.concat(buff_list, ', '))
+        else
+            print('[CrystalBuff] DEBUG: No active buffs found')
+        end
+    else
+        print('[CrystalBuff] DEBUG: Buffs type: ' .. type(buffs))
+        if buffs and #buffs > 0 then
+            print('[CrystalBuff] DEBUG: Buff list: ' .. table.concat(buffs, ', '))
+        end
+    end
+    
     local found_buff = get_current_buff(buffs)
     print('[CrystalBuff] Current Crystal Buff: ' .. (found_buff or 'None'))
 
@@ -122,8 +178,22 @@ ashita.events.register('load', 'cb_load', function()
     local ok, buffs = pcall(function()
         return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
     end)
-    if ok and type(buffs) == "table" then
-        last_buffs = {table.unpack(buffs)}
+    if ok and buffs then
+        -- Convert userdata to table if needed
+        if type(buffs) == "userdata" then
+            local buffs_table = {}
+            for i = 0, 31 do
+                local buff_id = buffs[i]
+                if buff_id and buff_id > 0 then
+                    table.insert(buffs_table, buff_id)
+                end
+            end
+            last_buffs = buffs_table
+        else
+            last_buffs = buffs
+        end
+    else
+        last_buffs = {}
     end
     if is_world_ready() then
         print_status_and_correct()
@@ -165,7 +235,19 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
     elseif (e.id == 0x063 or e.id == 0x037) then
         local buffs = AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
         if buffs_changed(buffs, last_buffs) then
-            last_buffs = {table.unpack(buffs)}
+            -- Convert userdata to table for storage
+            if type(buffs) == "userdata" then
+                local buffs_table = {}
+                for i = 0, 31 do
+                    local buff_id = buffs[i]
+                    if buff_id and buff_id > 0 then
+                        table.insert(buffs_table, buff_id)
+                    end
+                end
+                last_buffs = buffs_table
+            else
+                last_buffs = buffs
+            end
             if is_world_ready() then
                 print_status_and_correct()
             end
