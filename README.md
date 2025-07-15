@@ -54,10 +54,10 @@ Additional zone information will display if you run the command:
 /crystalbuff debug
 ```
 
-> **Example:**
-> [CrystalBuff] Current Zone: East Ronfaure (101)
-> [CrystalBuff] Required Buff: Signet
-> [CrystalBuff] Current Crystal Buff: None
+> **Example:**  
+> [CrystalBuff] Current Zone: East Ronfaure (101)  
+> [CrystalBuff] Required Buff: Signet  
+> [CrystalBuff] Current Crystal Buff: None  
 > [CrystalBuff] No crystal buff detected, issuing command: !signet
 
 ## Compatibility
