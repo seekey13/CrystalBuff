@@ -140,7 +140,14 @@ end
 
 -- Main logic: prints status and issues a buff command if needed.
 local function check_and_correct_buff_status()
-    local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+    local ok_zone, zone_id = pcall(function()
+        return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+    end)
+    if not ok_zone then
+        print('[CrystalBuff] Error: Failed to get current zone in check_and_correct_buff_status.')
+        return
+    end
+
     local zone_name = get_zone_name(zone_id)
 
     -- Non-combat/city zone filter
@@ -172,7 +179,14 @@ local function check_and_correct_buff_status()
         print(('[CrystalBuff] Required Buff: %s'):format(required_buff))
     end
 
-    local buffs = AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
+    local ok_buffs, buffs = pcall(function()
+        return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
+    end)
+    if not ok_buffs then
+        print('[CrystalBuff] Error: Failed to get player buffs in check_and_correct_buff_status.')
+        return
+    end
+
     local found_buff = get_current_buff(buffs)
     if debug_mode then
         print('[CrystalBuff] Current Crystal Buff: ' .. (found_buff or 'None'))
@@ -186,22 +200,23 @@ local function check_and_correct_buff_status()
             AshitaCore:GetChatManager():QueueCommand(-1, cmd)
             last_command_time = now
         else
-            if debug_mode then
-                print('[CrystalBuff] Mismatch detected, but command cooldown is active.')
-            end
         end
     end
 end
 
 -- Handles zone events, ensuring only one check per unique zone.
 local function handle_zone_event()
-    local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+    local ok_zone, zone_id = pcall(function()
+        return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+    end)
+    if not ok_zone then
+        print('[CrystalBuff] Error: Failed to get current zone in handle_zone_event.')
+        return
+    end
     if zone_id ~= last_zone then
         last_zone = zone_id
-        -- Clear the "no buff needed" tracking when entering a new zone
         checked_no_buff_zones = {}
-        zone_check_pending = false -- Reset the flag for new zone
-        -- Don't call check_and_correct_buff_status() here - let RoE packet handle it
+        zone_check_pending = false
     end
 end
 
@@ -225,41 +240,53 @@ ashita.events.register('load', 'cb_load', function()
         end
     else
         last_buffs = {}
+        print('[CrystalBuff] Error: Failed to get player buffs on load.')
     end
-    -- Don't check immediately on load, wait for RoE mask packets like zone changes
 end)
 
--- Only listen for 0x0A (zone change) and match the unityroEZ/zonename pattern.
 ashita.events.register('packet_in', 'cb_packet_in', function(e)
     if e.id == 0x0A then
         local moghouse = struct.unpack('b', e.data, 0x80 + 1)
         if moghouse ~= 1 then
             zone_check_pending = true
-            -- No timer, just wait for RoE mask packet
         end
     elseif e.id == PKT_ROE_MASK then
-        -- Check offset from RoE mask packet, only trigger on offset == 3
         local offset = struct.unpack('H', e.data, MASK_OFFSET_BYTE)
         if offset == 3 then
             if zone_check_pending then
-                -- Zone change triggered this
                 zone_check_pending = false
-                local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+                local ok_zone, zone_id = pcall(function()
+                    return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+                end)
+                if not ok_zone then
+                    print('[CrystalBuff] Error: Failed to get current zone in packet_in (zone change).')
+                    return
+                end
                 if zone_id ~= last_zone then
                     last_zone = zone_id
-                    -- Only clear checked zones if we're actually changing zones
                     checked_no_buff_zones = {}
                 end
                 check_and_correct_buff_status()
             elseif last_zone == nil then
-                -- Initial load triggered this
-                local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+                local ok_zone, zone_id = pcall(function()
+                    return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+                end)
+                if not ok_zone then
+                    print('[CrystalBuff] Error: Failed to get current zone in packet_in (initial load).')
+                    return
+                end
                 last_zone = zone_id
                 check_and_correct_buff_status()
             end
         end
     elseif e.id == 0x037 then
-        local buffs = AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
+        local ok_buffs, buffs = pcall(function()
+            return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
+        end)
+        if not ok_buffs then
+            print('[CrystalBuff] Error: Failed to get player buffs in packet_in (buff change).')
+            return
+        end
         if buffs_changed(buffs, last_buffs) then
             if type(buffs) == "userdata" then
                 local buffs_table = {}
@@ -273,23 +300,23 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
             else
                 last_buffs = buffs
             end
-            -- Only check if we don't have the correct buff or lost a crystal buff
             local current_buff = get_current_buff(buffs)
-            local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+            local ok_zone, zone_id = pcall(function()
+                return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+            end)
+            if not ok_zone then
+                print('[CrystalBuff] Error: Failed to get current zone in packet_in (buff change).')
+                return
+            end
             local required_buff = get_required_buff(zone_id)
-            
-            -- Skip if this is a non-combat zone or "Other" zone that we've already checked
             if non_combat_zones[zone_id] or required_buff == 'Other' then
                 if checked_no_buff_zones[zone_id] then
-                    return -- Already checked this zone, don't check again
+                    return
                 end
             end
-            
-            -- Also skip if we have a pending zone check (RoE packet will handle it)
             if zone_check_pending then
                 return
             end
-            
             if is_world_ready() and (not current_buff or current_buff ~= required_buff) then
                 check_and_correct_buff_status()
             end
