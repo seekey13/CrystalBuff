@@ -39,7 +39,7 @@ CrystalBuff runs silently in the background. When you change zones or your buffs
 - If you don't, it will automatically issue the appropriate command in chat to apply the correct buff.
 
 
-### Supported Buffs
+## Supported Buffs
 
 `!signet` `!sanction` & `!sigil`
 
