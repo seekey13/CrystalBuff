@@ -42,7 +42,7 @@ local required_buff_commands = {
     ['Sigil'] = '!sigil'
 }
 
--- Table of city and non-combat zone IDs (auto-generated using patterns and the latest ZoneIDs.txt)
+-- Table of city and non-combat zone IDs 
 local non_combat_zones = {
     -- San d'Oria
     [230]=true, [231]=true, [232]=true, [233]=true,
@@ -52,24 +52,25 @@ local non_combat_zones = {
     [238]=true, [239]=true, [240]=true, [241]=true, [242]=true,
     -- Jeuno
     [243]=true, [244]=true, [245]=true, [246]=true,
+    -- WotG Cities of the past
+    [80]=true, [87]=true, [94]=true,
     -- Aht Urhgan cities/towns
-    [50]=true, [53]=true, [252]=true,
-    -- Tavnazian Safehold, Rabao, Selbina, Mhaura, Kazham
-    [26]=true, [247]=true, [248]=true, [249]=true, [250]=true,
+    [48]=true, [50]=true, [53]=true,  -- Al Zahbi, Aht Urhgan Whitegate, Nashmau
+    -- Tavnazian Safehold, Rabao, Selbina, Mhaura, Kazham, Norg
+    [26]=true, [247]=true, [248]=true, [249]=true, [250]=true, [252]=true,
     -- Adoulin
     [256]=true, [257]=true,
     -- Mog House / Residential Area / Mog Garden
-    [0]=true, -- Tech Demo Area (Formerly mis-used as Mog House)
     [280]=true, -- Mog Garden
-    [242]=true, -- Heavens Tower (Residential Area)
-    -- Chocobo Circuit, Celennia Library, other safe/special zones
+    -- Transportation zones (ships, airships)
+    [46]=true, [47]=true, -- Open sea routes
+    [220]=true, [221]=true, -- Ships bound for Selbina/Mhaura
+    [223]=true, [224]=true, [225]=true, [226]=true, -- Airships
+    [227]=true, [228]=true, -- Ships with Pirates (still safe zones)
+    -- Special safe zones
     [70]=true, -- Chocobo Circuit
-    [284]=true, -- Celennia Memorial Library
-    [285]=true, -- Feretory (safe zone)
-    -- Test / unused / event areas (if you want to be extra safe)
-    [49]=true, -- Test Area (Checkerboard Zone)
-    -- Other clearly non-combat/safe areas
     [251]=true, -- Hall of the Gods
+    [284]=true, -- Celennia Memorial Library
 }
 
 --[[
