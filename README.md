@@ -45,15 +45,19 @@ CrystalBuff runs silently in the background. When you change zones or your buffs
 CrystalBuff includes several commands for monitoring and troubleshooting:
 
 ```
-/crystalbuff debug   - Toggle debug output on/off
-/crystalbuff status  - Show comprehensive addon status
-/crystalbuff zoneid  - Display current zone name and ID
-/crystalbuff help    - Show all available commands
+/crystalbuff debug    - Toggle debug output on/off
+/crystalbuff status   - Show comprehensive addon status
+/crystalbuff zoneid   - Display current zone name and ID
+/crystalbuff check    - Manually trigger a buff check
+/crystalbuff suppress - Toggle zone change buff suppression
+/crystalbuff help     - Show all available commands
 ```
 
 **Debug Mode:** When enabled, shows detailed information about zone detection, buff requirements, and decision-making process.
 
-**Status Command:** Displays current zone, required buff, active buff, debug mode state, and cache statistics.
+**Status Command:** Displays current zone, required buff, active buff, debug mode state, world readiness, zone change suppression, and cache statistics.
+
+**Suppress Command:** Toggles whether buff update checks are suppressed during zone transitions to reduce redundant processing.
 
 
 ## Supported Buffs
@@ -103,6 +107,17 @@ Cache Size: 12 zones
 - **Zone Caching:** Reduces API calls for improved performance  
 - **Smart Filtering:** Automatically skips checks in cities and safe zones
 - **Debounced Checking:** Limits buff checks to once per 0.5 seconds
+- **World Readiness Detection:** Initial buff check waits for proper world initialization via RoE packet
+- **Zone Transition Optimization:** Configurable suppression of redundant buff checks during zone changes
+
+### Timing and Initialization
+
+CrystalBuff uses intelligent timing to ensure reliable operation:
+
+- **World Readiness:** The addon waits for the Records of Eminence (RoE) packet before performing the initial buff check, ensuring the game world is fully loaded
+- **Fallback Safety:** If the RoE packet doesn't arrive within 10 seconds, a fallback check is performed to prevent hanging
+- **Buff Update Delays:** Small delays after buff update packets ensure memory is properly updated before checking
+- **Zone Change Handling:** Proper synchronization with zone transition packets
 
 
 ## Compatibility

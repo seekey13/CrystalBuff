@@ -33,7 +33,9 @@ local CrystalBuff = {
     CONFIG = {
         COMMAND_COOLDOWN = 10, -- seconds
         ZONE_NAME_CACHE_SIZE = 300, -- max cached zone names
-        BUFF_CHECK_DEBOUNCE = 0.5 -- seconds
+        BUFF_CHECK_DEBOUNCE = 0.5, -- seconds
+        ZONE_TRANSITION_DELAY = 0.3, -- seconds to wait after zone change before checking
+        SUPPRESS_BUFF_CHECKS_DURING_ZONE_CHANGE = true -- skip buff update checks during zone transitions
     },
     
     -- Centralized state
@@ -45,7 +47,9 @@ local CrystalBuff = {
         debug_mode = false,
         last_buff_check = 0,
         zone_name_cache = {},
-        buff_buffer = {} -- reusable buffer for buff comparisons
+        buff_buffer = {}, -- reusable buffer for buff comparisons
+        world_ready = false,
+        initial_check_needed = false
     },
     
     -- Buff and zone data
@@ -172,8 +176,19 @@ end
 
 -- Optimized buff comparison with buffer reuse
 local function buffs_changed(new_buffs, old_buffs)
-    if not new_buffs then return false end
-    if not old_buffs then return true end
+    if not new_buffs then 
+        if CrystalBuff.state.debug_mode then
+            printf('DEBUG: new_buffs is nil, returning false')
+        end
+        return false 
+    end
+    
+    if not old_buffs then 
+        if CrystalBuff.state.debug_mode then
+            printf('DEBUG: old_buffs is nil, returning true')
+        end
+        return true 
+    end
     
     -- Reuse buffer to avoid allocations
     local new_table = CrystalBuff.state.buff_buffer
@@ -194,16 +209,31 @@ local function buffs_changed(new_buffs, old_buffs)
         end
     end
     
+    if CrystalBuff.state.debug_mode then
+        printf('DEBUG: New buff count: %d, Old buff count: %d', #new_table, #old_buffs)
+    end
+    
     -- Quick length check
-    if #new_table ~= #old_buffs then return true end
+    if #new_table ~= #old_buffs then 
+        if CrystalBuff.state.debug_mode then
+            printf('DEBUG: Buff counts differ, change detected')
+        end
+        return true 
+    end
     
     -- Content comparison
     for i = 1, #new_table do
         if new_table[i] ~= old_buffs[i] then
+            if CrystalBuff.state.debug_mode then
+                printf('DEBUG: Buff content differs at position %d: %d vs %d', i, new_table[i], old_buffs[i])
+            end
             return true
         end
     end
     
+    if CrystalBuff.state.debug_mode then
+        printf('DEBUG: No buff changes detected')
+    end
     return false
 end
 
@@ -309,16 +339,39 @@ local function handle_zone_change()
     local zone_id = get_current_zone()
     if zone_id then
         CrystalBuff.state.zone_check_pending = false
-        check_and_correct_buff_status()
+        if CrystalBuff.state.debug_mode then
+            printf('DEBUG: Zone change handled, scheduling buff check in %.1fs', CrystalBuff.CONFIG.ZONE_TRANSITION_DELAY)
+        end
+        -- Delay to let zone transition settle and avoid redundant checks
+        ashita.tasks.once(CrystalBuff.CONFIG.ZONE_TRANSITION_DELAY, function()
+            check_and_correct_buff_status()
+        end)
     end
 end
 
 -- Centralized buff change handling  
 local function handle_buff_change()
     local buffs = get_player_buffs()
-    if not buffs then return end
+    if not buffs then 
+        if CrystalBuff.state.debug_mode then
+            printf('DEBUG: Could not get player buffs in handle_buff_change')
+        end
+        return 
+    end
     
-    if buffs_changed(buffs, CrystalBuff.state.last_buffs) then
+    if CrystalBuff.state.debug_mode then
+        local current_crystal_buff = get_current_buff(buffs)
+        printf('DEBUG: Current crystal buff detected: %s', current_crystal_buff or 'None')
+    end
+    
+    -- Always update our internal buff state first
+    local buffs_have_changed = buffs_changed(buffs, CrystalBuff.state.last_buffs)
+    
+    if buffs_have_changed then
+        if CrystalBuff.state.debug_mode then
+            printf('DEBUG: Buff change detected, updating internal state')
+        end
+        
         -- Update last_buffs efficiently
         table.clear(CrystalBuff.state.last_buffs)
         if type(buffs) == "userdata" then
@@ -335,22 +388,58 @@ local function handle_buff_change()
                 end
             end
         end
-        
-        local zone_id = get_current_zone()
-        if not zone_id then return end
-        
-        -- Skip if non-combat zone or no required buff
-        if CrystalBuff.non_combat_zones[zone_id] or not get_required_buff(zone_id) then
-            return
+    else
+        if CrystalBuff.state.debug_mode then
+            printf('DEBUG: No buff changes detected, but still checking buff status')
         end
-        
-        -- Skip if zone change is pending or world not ready
-        if CrystalBuff.state.zone_check_pending or not is_world_ready() then
-            return
-        end
-        
-        check_and_correct_buff_status()
     end
+    
+    -- Always check if we have the correct buff for the zone (regardless of whether buffs changed)
+    local zone_id = get_current_zone()
+    if not zone_id then 
+        if CrystalBuff.state.debug_mode then
+            printf('DEBUG: No zone ID available, skipping buff check')
+        end
+        return 
+    end
+    
+    -- Skip if non-combat zone 
+    if CrystalBuff.non_combat_zones[zone_id] then
+        if CrystalBuff.state.debug_mode then
+            printf('DEBUG: In non-combat zone, skipping buff check')
+        end
+        return
+    end
+    
+    -- Skip if no required buff
+    if not get_required_buff(zone_id) then
+        if CrystalBuff.state.debug_mode then
+            printf('DEBUG: No buff required for this zone, skipping check')
+        end
+        return
+    end
+    
+    -- Skip if zone change is pending
+    if CrystalBuff.state.zone_check_pending then
+        if CrystalBuff.state.debug_mode then
+            printf('DEBUG: Zone change pending, skipping buff check')
+        end
+        return
+    end
+    
+    -- Skip if world not ready
+    if not is_world_ready() then
+        if CrystalBuff.state.debug_mode then
+            printf('DEBUG: World not ready, skipping buff check')
+        end
+        return
+    end
+    
+    if CrystalBuff.state.debug_mode then
+        printf('DEBUG: All checks passed, proceeding with buff status check')
+    end
+    
+    check_and_correct_buff_status()
 end
 
 -- Initialize last_buffs on load
@@ -382,6 +471,25 @@ ashita.events.register('load', 'cb_load', function()
     if CrystalBuff.state.debug_mode then
         printf('CrystalBuff loaded and optimized!')
     end
+    
+    -- Mark that we need an initial check once the world is ready
+    CrystalBuff.state.initial_check_needed = true
+    CrystalBuff.state.world_ready = false
+    
+    if CrystalBuff.state.debug_mode then
+        printf('DEBUG: Initial buff check will be performed once world is ready (after RoE packet)')
+    end
+    
+    -- Safety fallback: if world isn't ready after 10 seconds, perform check anyway
+    ashita.tasks.once(10.0, function()
+        if CrystalBuff.state.initial_check_needed then
+            CrystalBuff.state.initial_check_needed = false
+            if CrystalBuff.state.debug_mode then
+                printf('DEBUG: Fallback - performing initial buff check after 10s timeout')
+            end
+            check_and_correct_buff_status()
+        end
+    end)
 end)
 
 -- Consolidated packet handling
@@ -395,6 +503,27 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
     elseif e.id == CrystalBuff.PACKETS.ROE_MASK then
         local offset = struct.unpack('H', e.data, CrystalBuff.PACKETS.OFFSETS.MASK_BYTE)
         if offset == 3 then
+            -- Mark the world as ready
+            if not CrystalBuff.state.world_ready then
+                CrystalBuff.state.world_ready = true
+                if CrystalBuff.state.debug_mode then
+                    printf('DEBUG: World is now ready (RoE packet received)')
+                end
+                
+                -- Perform initial buff check if needed
+                if CrystalBuff.state.initial_check_needed then
+                    CrystalBuff.state.initial_check_needed = false
+                    if CrystalBuff.state.debug_mode then
+                        printf('DEBUG: Performing initial buff check now that world is ready')
+                    end
+                    -- Small delay to ensure all systems are fully initialized
+                    ashita.tasks.once(0.5, function()
+                        check_and_correct_buff_status()
+                    end)
+                end
+            end
+            
+            -- Handle zone changes
             if CrystalBuff.state.zone_check_pending then
                 handle_zone_change()
             elseif not get_current_zone() then
@@ -403,7 +532,26 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
         end
         
     elseif e.id == CrystalBuff.PACKETS.BUFF_UPDATE then
-        handle_buff_change()
+        -- Skip buff update checks if we're in the middle of a zone change (if configured)
+        if CrystalBuff.CONFIG.SUPPRESS_BUFF_CHECKS_DURING_ZONE_CHANGE and CrystalBuff.state.zone_check_pending then
+            if CrystalBuff.state.debug_mode then
+                printf('DEBUG: Buff update packet received but zone change pending, skipping check')
+            end
+            return
+        end
+        
+        if CrystalBuff.state.debug_mode then
+            printf('DEBUG: Buff update packet received (0x037), scheduling delayed check')
+        end
+        -- Add small delay to allow buff data to update in memory
+        ashita.tasks.once(0.1, function()
+            -- Double-check that zone change isn't pending when the delayed check runs (if configured)
+            if not (CrystalBuff.CONFIG.SUPPRESS_BUFF_CHECKS_DURING_ZONE_CHANGE and CrystalBuff.state.zone_check_pending) then
+                handle_buff_change()
+            elseif CrystalBuff.state.debug_mode then
+                printf('DEBUG: Delayed buff check cancelled due to pending zone change')
+            end
+        end)
     end
 end)
 
@@ -443,15 +591,29 @@ ashita.events.register('command', 'cb_command', function(e)
                 printf('Required Buff: %s', required_buff or 'None')
                 printf('Current Buff: %s', current_buff or 'None')
                 printf('Debug Mode: %s', CrystalBuff.state.debug_mode and 'ON' or 'OFF')
+                printf('World Ready: %s', CrystalBuff.state.world_ready and 'YES' or 'NO')
+                printf('Initial Check Pending: %s', CrystalBuff.state.initial_check_needed and 'YES' or 'NO')
+                printf('Zone Change Suppression: %s', CrystalBuff.CONFIG.SUPPRESS_BUFF_CHECKS_DURING_ZONE_CHANGE and 'ON' or 'OFF')
                 printf('Cache Size: %d zones', table.length(CrystalBuff.state.zone_name_cache))
             end
             
+        elseif cmd == 'check' then
+            printf('Manually triggering buff check...')
+            check_and_correct_buff_status()
+            
+        elseif cmd == 'suppress' then
+            CrystalBuff.CONFIG.SUPPRESS_BUFF_CHECKS_DURING_ZONE_CHANGE = not CrystalBuff.CONFIG.SUPPRESS_BUFF_CHECKS_DURING_ZONE_CHANGE
+            printf('Zone change buff suppression %s', 
+                CrystalBuff.CONFIG.SUPPRESS_BUFF_CHECKS_DURING_ZONE_CHANGE and 'enabled' or 'disabled')
+            
         elseif cmd == 'help' then
             printf('CrystalBuff Commands:')
-            printf('  /crystalbuff debug   - Toggle debug output')
-            printf('  /crystalbuff zoneid  - Print current zone info')
-            printf('  /crystalbuff status  - Show addon status')
-            printf('  /crystalbuff help    - Show this help')
+            printf('  /crystalbuff debug    - Toggle debug output')
+            printf('  /crystalbuff zoneid   - Print current zone info')
+            printf('  /crystalbuff status   - Show addon status')
+            printf('  /crystalbuff check    - Manually trigger buff check')
+            printf('  /crystalbuff suppress - Toggle zone change buff suppression')
+            printf('  /crystalbuff help     - Show this help')
         else
             printf('Unknown command. Use /crystalbuff help for available commands.')
         end
