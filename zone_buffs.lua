@@ -10,6 +10,26 @@
 --]]
 
 local zone_buffs = {}
+local non_combat_zones = {}
+
+local non_combat_zone_ids = {
+    230, 231, 232, 233, -- San d'Oria
+    234, 235, 236, 237, -- Bastok
+    238, 239, 240, 241, 242, -- Windurst
+    243, 244, 245, 246, -- Jeuno
+    80, 87, 94, -- WotG Cities of the past (San d'Oria [S], Bastok [S], Windurst [S]
+    48, 50, 53, -- Aht Urhgan cities/towns (Al Zahbi, Aht Urhgan Whitegate, Nashmau)
+    26, 247, 248, 249, 250, 252, -- Other Towns (Tavnazian Safehold, Rabao, Selbina, Mhaura, Kazham, Norg)
+    256, 257, -- Adoulin
+    280, -- Mog Garden
+    46, 47, -- Open sea routes
+    220, 221, -- Ships bound for Selbina/Mhaura
+    223, 224, 225, 226, -- Airships
+    227, 228, -- Ships with Pirates (still safe zones)
+    70, -- Chocobo Circuit
+    251, -- Hall of the Gods
+    284, -- Celennia Memorial Library
+}
 
 -- Signet zones (Original FFXI, Rise of the Zilart, Chains of Promathia)
 local signet_zones = {
@@ -41,6 +61,10 @@ end
 
 for _, zone_id in ipairs(sigil_zones) do
     zone_buffs[zone_id] = "Sigil"
+end
+
+for _, zone_id in ipairs(non_combat_zone_ids) do
+    non_combat_zones[zone_id] = true
 end
 
 -- Function to get the buff type for a given zone ID (returns nil for ignored zones)
@@ -76,5 +100,6 @@ return {
     ZoneHasBuff = ZoneHasBuff,
     ZoneSupports = ZoneSupports,
     GetZonesByBuff = GetZonesByBuff,
-    zone_buffs = zone_buffs
+    zone_buffs = zone_buffs,
+    non_combat_zones = non_combat_zones
 }
