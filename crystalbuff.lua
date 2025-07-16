@@ -298,24 +298,36 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
             else
                 last_buffs = buffs
             end
-            local current_buff = get_current_buff(buffs)
-            local ok_zone, zone_id = pcall(function()
-                return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+            
+            -- Add 1 second delay to allow buff data to fully update
+            ashita.tasks.once(1, function()
+                local ok_buffs_delayed, buffs_delayed = pcall(function()
+                    return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
+                end)
+                if not ok_buffs_delayed then
+                    errorf('Error: Failed to get player buffs in delayed buff check.')
+                    return
+                end
+                
+                local current_buff = get_current_buff(buffs_delayed)
+                local ok_zone, zone_id = pcall(function()
+                    return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+                end)
+                if not ok_zone then
+                    errorf('Error: Failed to get current zone in delayed buff check.')
+                    return
+                end
+                local required_buff = get_required_buff(zone_id)
+                if non_combat_zones[zone_id] or not required_buff then
+                    return
+                end
+                if zone_check_pending then
+                    return
+                end
+                if is_world_ready() and (not current_buff or current_buff ~= required_buff) then
+                    check_and_correct_buff_status()
+                end
             end)
-            if not ok_zone then
-                errorf('Error: Failed to get current zone in packet_in (buff change).')
-                return
-            end
-            local required_buff = get_required_buff(zone_id)
-            if non_combat_zones[zone_id] or not required_buff then
-                return
-            end
-            if zone_check_pending then
-                return
-            end
-            if is_world_ready() and (not current_buff or current_buff ~= required_buff) then
-                check_and_correct_buff_status()
-            end
         end
     end
 end)
