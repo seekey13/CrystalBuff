@@ -4,7 +4,7 @@ Automatically tracks and corrects your current crystal buff (Signet, Sanction, S
 Copyright (c) 2025 Seekey
 https://github.com/seekey13/CrystalBuff
 
-
+This addon is designed for Ashita v4 and the CatsEyeXI private server.
 ]]
 
 addon.name      = 'CrystalBuff';
