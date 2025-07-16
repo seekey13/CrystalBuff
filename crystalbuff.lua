@@ -9,7 +9,7 @@ This addon is designed for Ashita v4 and the CatsEyeXI private server.
 
 addon.name      = 'CrystalBuff';
 addon.author    = 'Seekey';
-addon.version   = '1.1';
+addon.version   = '1.2';
 addon.desc      = 'Tracks and corrects crystal buff (Signet, Sanction, Sigil) based on current zone.';
 addon.link      = 'https://github.com/seekey13/CrystalBuff';
 
@@ -27,7 +27,6 @@ local last_buffs = {}
 local last_command_time = 0
 local COMMAND_COOLDOWN = 10 -- seconds; rate limit for issuing correction commands
 local debug_mode = false -- Toggle for debug output
-local checked_no_buff_zones = {} -- Track zones where no buff is needed to avoid rechecking
 local zone_check_pending = false -- Prevent double execution on zone change
 
 -- RoE mask packet constants
@@ -131,9 +130,9 @@ end
 
 -- Returns true if the world is ready (not zoning and player entity exists).
 local function is_world_ready()
-    local p = AshitaCore:GetMemoryManager():GetPlayer()
-    local e = GetPlayerEntity and GetPlayerEntity()
-    return p and not p.isZoning and e
+    local ok, p = pcall(function() return AshitaCore:GetMemoryManager():GetPlayer() end)
+    local e = ok and (GetPlayerEntity and GetPlayerEntity())
+    return ok and p and not p.isZoning and e
 end
 
 -- Main logic: prints status and issues a buff command if needed.
@@ -150,24 +149,18 @@ local function check_and_correct_buff_status()
 
     -- Non-combat/city zone filter
     if non_combat_zones[zone_id] then
-        if not checked_no_buff_zones[zone_id] then
-            checked_no_buff_zones[zone_id] = true
-            if debug_mode then
-                printf('Zone "%s" (%u) is a non-combat/city zone. No buff check needed.', zone_name, zone_id)
-            end
+        if debug_mode then
+            printf('Zone "%s" (%u) is a non-combat/city zone. No buff check needed.', zone_name, zone_id)
         end
         return
     end
 
     local required_buff = get_required_buff(zone_id)
     
-    -- If no buff is needed (nil), only check once
+    -- If no buff is needed (nil)
     if not required_buff then
-        if not checked_no_buff_zones[zone_id] then
-            checked_no_buff_zones[zone_id] = true
-            if debug_mode then
-                printf('Zone "%s" (%u) requires no crystal buff.', zone_name, zone_id)
-            end
+        if debug_mode then
+            printf('Zone "%s" (%u) requires no crystal buff.', zone_name, zone_id)
         end
         return
     end
@@ -219,7 +212,6 @@ local function handle_zone_event()
     end
     if zone_id ~= last_zone then
         last_zone = zone_id
-        checked_no_buff_zones = {}
         zone_check_pending = false
     end
 end
@@ -268,7 +260,6 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
                 end
                 if zone_id ~= last_zone then
                     last_zone = zone_id
-                    checked_no_buff_zones = {}
                 end
                 check_and_correct_buff_status()
             elseif last_zone == nil then
@@ -314,9 +305,7 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
             end
             local required_buff = get_required_buff(zone_id)
             if non_combat_zones[zone_id] or not required_buff then
-                if checked_no_buff_zones[zone_id] then
-                    return
-                end
+                return
             end
             if zone_check_pending then
                 return
