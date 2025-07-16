@@ -12,6 +12,10 @@ CrystalBuff is an Ashita v4 addon for Final Fantasy XI that automatically tracks
 - **Automatic Detection:** Monitors your active buffs and determines which crystal buff (Signet, Sanction, or Sigil) is required for your current zone.
 - **Buff Correction:** If you are missing the required buff for your zone, CrystalBuff will automatically attempt to apply the correct one by issuing the appropriate command.
 - **Zone Awareness:** Recognizes the zones where each buff is needed—Signet (vanilla zones), Sanction (ToAU zones), Sigil (past zones)—and adapts as you move.
+- **Smart Filtering:** Automatically ignores city zones, non-combat areas, and other safe zones where crystal buffs are not needed.
+- **Command Cooldown:** Built-in 10-second cooldown prevents spam and conflicts with other addons.
+- **Intelligent Delays:** Uses strategic delays to ensure buff data is fully updated before making corrections.
+- **Debug Mode:** Optional verbose output for troubleshooting and monitoring addon behavior.
 - **Minimal Setup:** No configuration required. Just load the addon and let it keep your crystal buff up-to-date.
 
 
@@ -33,10 +37,22 @@ CrystalBuff is an Ashita v4 addon for Final Fantasy XI that automatically tracks
 
 ## Usage
 
-CrystalBuff runs silently in the background. When you change zones or your buffs change, it will check if you have the correct crystal buff for your region:
+CrystalBuff runs automatically in the background. When you change zones or your buffs change, it will:
 
-- If you do, nothing happens.
-- If you don't, it will automatically issue the appropriate command in chat to apply the correct buff.
+1. **Check your location:** Determines if you're in a zone that uses a crystal buff
+2. **Verify your buffs:** Compares your current crystal buff against what's needed for the zone
+3. **Apply corrections:** If needed, automatically issues the appropriate command to get the correct buff
+
+### Intelligent Behavior
+- **Safe Zone Detection:** Automatically ignores cities, towns, and other non-combat areas where buffs aren't needed
+- **Rate Limiting:** Uses a 10-second cooldown between correction commands to prevent server command spam
+- **Timing Optimization:** Employs strategic delays to ensure buff data is fully updated before making decisions
+- **Error Resilience:** Robust error handling prevents crashes and provides helpful feedback
+
+### When Corrections Happen
+- If you have no crystal buff in a combat zone
+- If you have the wrong crystal buff for your current zone (e.g., Signet in a ToAU zone)
+- After zoning into a new area that requires a different buff
 
 
 ## Supported Buffs
@@ -49,18 +65,35 @@ CrystalBuff runs silently in the background. When you change zones or your buffs
 
 ## Output
 
-By default, CrystalBuff runs silently in the background. 
+By default, CrystalBuff runs silently in the background with minimal output.
 
-Additional zone information will display if you run the command:
+### Debug Mode
+Enable detailed output with:
 ```
 /crystalbuff debug
 ```
 
-> **Example:**  
+When debug mode is enabled, you'll see detailed information about:
+- Current zone name and ID
+- Required buff for the zone  
+- Your current crystal buff status
+- Buff correction actions
+
+### Additional Commands
+```
+/crystalbuff zoneid
+```
+Displays your current zone name and ID for troubleshooting purposes.
+
+> **Example Debug Output:**  
 > [CrystalBuff] Current Zone: East Ronfaure (101)  
 > [CrystalBuff] Required Buff: Signet  
 > [CrystalBuff] Current Crystal Buff: None  
-> [CrystalBuff] No crystal buff detected, issuing command: !signet
+> [CrystalBuff] Mismatch detected, issuing command: !signet
+
+### Available Commands
+- `/crystalbuff debug` - Toggle debug mode on/off
+- `/crystalbuff zoneid` - Show current zone name and ID
 
 
 ## Compatibility
@@ -91,3 +124,24 @@ Open an issue or pull request on the [GitHub repository](https://github.com/seek
 
 Completely unnecessary AI generated image  
 <img width="200" height="200" alt="CrystalBuff-transparent" src="https://github.com/user-attachments/assets/7be56b46-c39f-4234-8e8b-d8c7cb3b5fd0" />
+
+## Changelog
+
+### Version 1.3
+- Added 1-second delay for buff change detection to improve accuracy
+- Enhanced packet handling for more reliable zone and buff detection
+- Improved error handling with comprehensive pcall usage
+
+### Version 1.2  
+- Added command cooldown system (10-second rate limiting)
+- Implemented smart delays (2-second delay for commands to avoid conflicts)
+- Added non-combat zone filtering (cities, towns, safe areas)
+- Introduced debug mode with `/crystalbuff debug` command
+- Added zone ID command `/crystalbuff zoneid` for troubleshooting
+- Enhanced error handling and logging
+- Improved zone change detection with packet-based monitoring
+
+### Version 1.0
+- Initial release with basic automatic buff detection and correction
+- Support for Signet, Sanction, and Sigil buffs
+- Zone-based buff requirements
