@@ -9,12 +9,18 @@ This addon is designed for Ashita v4 and the CatsEyeXI private server.
 
 addon.name      = 'CrystalBuff';
 addon.author    = 'Seekey';
-addon.version   = '1.0';
+addon.version   = '1.1';
 addon.desc      = 'Tracks and corrects crystal buff (Signet, Sanction, Sigil) based on current zone.';
 addon.link      = 'https://github.com/seekey13/CrystalBuff';
 
 require('common');
+local chat = require('chat')
 local zone_buffs = require('zone_buffs');
+
+-- Custom print functions for categorized output.
+local function printf(fmt, ...)  print(chat.header(addon.name) .. chat.message(fmt:format(...))) end
+local function warnf(fmt, ...)   print(chat.header(addon.name) .. chat.warning(fmt:format(...))) end
+local function errorf(fmt, ...)  print(chat.header(addon.name) .. chat.error  (fmt:format(...))) end
 
 local last_zone = nil
 local last_buffs = {}
@@ -44,30 +50,19 @@ local required_buff_commands = {
 
 -- Table of city and non-combat zone IDs 
 local non_combat_zones = {
-    -- San d'Oria
-    [230]=true, [231]=true, [232]=true, [233]=true,
-    -- Bastok
-    [234]=true, [235]=true, [236]=true, [237]=true,
-    -- Windurst
-    [238]=true, [239]=true, [240]=true, [241]=true, [242]=true,
-    -- Jeuno
-    [243]=true, [244]=true, [245]=true, [246]=true,
-    -- WotG Cities of the past
-    [80]=true, [87]=true, [94]=true,
-    -- Aht Urhgan cities/towns
-    [48]=true, [50]=true, [53]=true,  -- Al Zahbi, Aht Urhgan Whitegate, Nashmau
-    -- Tavnazian Safehold, Rabao, Selbina, Mhaura, Kazham, Norg
-    [26]=true, [247]=true, [248]=true, [249]=true, [250]=true, [252]=true,
-    -- Adoulin
-    [256]=true, [257]=true,
-    -- Mog House / Residential Area / Mog Garden
+    [230]=true, [231]=true, [232]=true, [233]=true,  -- San d'Oria
+    [234]=true, [235]=true, [236]=true, [237]=true,  -- Bastok
+    [238]=true, [239]=true, [240]=true, [241]=true, [242]=true,  -- Windurst
+    [243]=true, [244]=true, [245]=true, [246]=true,  -- Jeuno
+    [80]=true, [87]=true, [94]=true,  -- WotG Cities of the past (San d'Oria [S], Bastok [S], Windurst [S]
+    [48]=true, [50]=true, [53]=true,  -- Aht Urhgan cities/towns (Al Zahbi, Aht Urhgan Whitegate, Nashmau)
+    [26]=true, [247]=true, [248]=true, [249]=true, [250]=true, [252]=true,  -- Other Towns (Tavnazian Safehold, Rabao, Selbina, Mhaura, Kazham, Norg)
+    [256]=true, [257]=true,  -- Adoulin
     [280]=true, -- Mog Garden
-    -- Transportation zones (ships, airships)
     [46]=true, [47]=true, -- Open sea routes
     [220]=true, [221]=true, -- Ships bound for Selbina/Mhaura
     [223]=true, [224]=true, [225]=true, [226]=true, -- Airships
     [227]=true, [228]=true, -- Ships with Pirates (still safe zones)
-    -- Special safe zones
     [70]=true, -- Chocobo Circuit
     [251]=true, -- Hall of the Gods
     [284]=true, -- Celennia Memorial Library
@@ -147,7 +142,7 @@ local function check_and_correct_buff_status()
         return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
     end)
     if not ok_zone then
-        print('[CrystalBuff] Error: Failed to get current zone in check_and_correct_buff_status.')
+        errorf('Error: Failed to get current zone in check_and_correct_buff_status.')
         return
     end
 
@@ -158,7 +153,7 @@ local function check_and_correct_buff_status()
         if not checked_no_buff_zones[zone_id] then
             checked_no_buff_zones[zone_id] = true
             if debug_mode then
-                print(('[CrystalBuff] Zone "%s" (%u) is a non-combat/city zone. No buff check needed.'):format(zone_name, zone_id))
+                printf('Zone "%s" (%u) is a non-combat/city zone. No buff check needed.', zone_name, zone_id)
             end
         end
         return
@@ -171,28 +166,28 @@ local function check_and_correct_buff_status()
         if not checked_no_buff_zones[zone_id] then
             checked_no_buff_zones[zone_id] = true
             if debug_mode then
-                print(('[CrystalBuff] Zone "%s" (%u) requires no crystal buff.'):format(zone_name, zone_id))
+                printf('Zone "%s" (%u) requires no crystal buff.', zone_name, zone_id)
             end
         end
         return
     end
 
     if debug_mode then
-        print(('[CrystalBuff] Current Zone: %s (%u)'):format(zone_name, zone_id))
-        print(('[CrystalBuff] Required Buff: %s'):format(required_buff))
+        printf('Current Zone: %s (%u)', zone_name, zone_id)
+        printf('Required Buff: %s', required_buff)
     end
 
     local ok_buffs, buffs = pcall(function()
         return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
     end)
     if not ok_buffs then
-        print('[CrystalBuff] Error: Failed to get player buffs in check_and_correct_buff_status.')
+        errorf('Error: Failed to get player buffs in check_and_correct_buff_status.')
         return
     end
 
     local found_buff = get_current_buff(buffs)
     if debug_mode then
-        print('[CrystalBuff] Current Crystal Buff: ' .. (found_buff or 'None'))
+        printf('Current Crystal Buff: %s', found_buff or 'None')
     end
 
     if required_buff_commands[required_buff] and found_buff ~= required_buff then
@@ -202,15 +197,13 @@ local function check_and_correct_buff_status()
             local delay = 2
             ashita.tasks.once(delay, function()
                 local cmd = required_buff_commands[required_buff]
-                print(('[CrystalBuff] Mismatch detected, issuing command: %s'):format(cmd))
+                printf('Mismatch detected, issuing command: %s', cmd)
                 AshitaCore:GetChatManager():QueueCommand(-1, cmd)
             end)
             last_command_time = now
         else
-            if debug_mode then
-                local remaining = COMMAND_COOLDOWN - (now - last_command_time)
-                print(('[CrystalBuff] Command cooldown in effect, %d seconds remaining.'):format(remaining))
-            end
+            local remaining = COMMAND_COOLDOWN - (now - last_command_time)
+            warnf('Command cooldown in effect, %d seconds remaining.', remaining)
         end
     end
 end
@@ -221,7 +214,7 @@ local function handle_zone_event()
         return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
     end)
     if not ok_zone then
-        print('[CrystalBuff] Error: Failed to get current zone in handle_zone_event.')
+        errorf('Error: Failed to get current zone in handle_zone_event.')
         return
     end
     if zone_id ~= last_zone then
@@ -251,7 +244,7 @@ ashita.events.register('load', 'cb_load', function()
         end
     else
         last_buffs = {}
-        print('[CrystalBuff] Error: Failed to get player buffs on load.')
+        errorf('Error: Failed to get player buffs on load.')
     end
 end)
 
@@ -270,7 +263,7 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
                     return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
                 end)
                 if not ok_zone then
-                    print('[CrystalBuff] Error: Failed to get current zone in packet_in (zone change).')
+                    errorf('Error: Failed to get current zone in packet_in (zone change).')
                     return
                 end
                 if zone_id ~= last_zone then
@@ -283,7 +276,7 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
                     return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
                 end)
                 if not ok_zone then
-                    print('[CrystalBuff] Error: Failed to get current zone in packet_in (initial load).')
+                    errorf('Error: Failed to get current zone in packet_in (initial load).')
                     return
                 end
                 last_zone = zone_id
@@ -295,7 +288,7 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
             return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
         end)
         if not ok_buffs then
-            print('[CrystalBuff] Error: Failed to get player buffs in packet_in (buff change).')
+            errorf('Error: Failed to get player buffs in packet_in (buff change).')
             return
         end
         if buffs_changed(buffs, last_buffs) then
@@ -316,7 +309,7 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
                 return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
             end)
             if not ok_zone then
-                print('[CrystalBuff] Error: Failed to get current zone in packet_in (buff change).')
+                errorf('Error: Failed to get current zone in packet_in (buff change).')
                 return
             end
             local required_buff = get_required_buff(zone_id)
@@ -344,14 +337,14 @@ ashita.events.register('command', 'cb_command', function(e)
     
     if #args >= 2 and args[2]:lower() == 'debug' then
         debug_mode = not debug_mode
-        print(('[CrystalBuff] Debug mode %s'):format(debug_mode and 'enabled' or 'disabled'))
+        printf('Debug mode %s', debug_mode and 'enabled' or 'disabled')
     elseif #args >= 2 and args[2]:lower() == 'zoneid' then
         local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
         local zone_name = get_zone_name(zone_id)
-        print(('[CrystalBuff] Current Zone: %s (%u)'):format(zone_name, zone_id))
+        printf('Current Zone: %s (%u)', zone_name, zone_id)
     else
-        print('[CrystalBuff] Commands:')
-        print('  /crystalbuff debug  - Toggle debug output')
-        print('  /crystalbuff zoneid - Print current zone name and ID')
+        printf('Commands:')
+        printf('  /crystalbuff debug  - Toggle debug output')
+        printf('  /crystalbuff zoneid - Print current zone name and ID')
     end
 end)
