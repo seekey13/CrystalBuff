@@ -131,6 +131,9 @@ end
 -- Returns true if the world is ready (not zoning and player entity exists).
 local function is_world_ready()
     local ok, p = pcall(function() return AshitaCore:GetMemoryManager():GetPlayer() end)
+    if not ok then
+        errorf('Error: Failed to access player object.')
+    end
     local e = ok and (GetPlayerEntity and GetPlayerEntity())
     return ok and p and not p.isZoning and e
 end
