@@ -12,6 +12,10 @@ CrystalBuff is an Ashita v4 addon for Final Fantasy XI that automatically tracks
 - **Automatic Detection:** Monitors your active buffs and determines which crystal buff (Signet, Sanction, or Sigil) is required for your current zone.
 - **Buff Correction:** If you are missing the required buff for your zone, CrystalBuff will automatically attempt to apply the correct one by issuing the appropriate command.
 - **Zone Awareness:** Recognizes the zones where each buff is needed—Signet (vanilla zones), Sanction (ToAU zones), Sigil (past zones)—and adapts as you move.
+- **Performance Optimized:** Features caching, debouncing, and memory management for minimal impact on gameplay.
+- **Smart Filtering:** Automatically skips buff checks in cities and safe zones where buffs aren't needed.
+- **Command Cooldowns:** Built-in 10-second cooldown prevents command spam to server.
+- **Enhanced Commands:** Debug mode, status reporting, and zone information commands for troubleshooting.
 - **Minimal Setup:** No configuration required. Just load the addon and let it keep your crystal buff up-to-date.
 
 
@@ -30,7 +34,6 @@ CrystalBuff is an Ashita v4 addon for Final Fantasy XI that automatically tracks
    /addon load crystalbuff
    ```
 
-
 ## Usage
 
 CrystalBuff runs silently in the background. When you change zones or your buffs change, it will check if you have the correct crystal buff for your region:
@@ -38,35 +41,83 @@ CrystalBuff runs silently in the background. When you change zones or your buffs
 - If you do, nothing happens.
 - If you don't, it will automatically issue the appropriate command in chat to apply the correct buff.
 
+## Commands
+CrystalBuff includes several commands for monitoring and troubleshooting:
+
+```
+/crystalbuff debug   - Toggle debug output on/off
+/crystalbuff status  - Show comprehensive addon status
+/crystalbuff zoneid  - Display current zone name and ID
+/crystalbuff help    - Show all available commands
+```
+
+**Debug Mode:** When enabled, shows detailed information about zone detection, buff requirements, and decision-making process.
+
+**Status Command:** Displays current zone, required buff, active buff, debug mode state, and cache statistics.
+
 
 ## Supported Buffs
-
-
 `Signet`<img width="16" height="16" alt="Signet_29" src="https://github.com/user-attachments/assets/bf734529-5be3-454f-9c22-b9a94db5037d" />, 
 `Sanction`<img width="16" height="16" alt="Sanction_29" src="https://github.com/user-attachments/assets/a0df9583-9263-49e5-94f9-6a3a3de5d447" /> & 
 `Sigil`<img width="16" height="16" alt="Sigil_29" src="https://github.com/user-attachments/assets/0b7739d3-a903-4143-8494-bf839d22179b" />
 
 
 ## Output
+By default, CrystalBuff runs silently in the background with minimal output.
 
-By default, CrystalBuff runs silently in the background. 
+### Debug Mode
 
-Additional zone information will display if you run the command:
+Enable detailed output with:
 ```
 /crystalbuff debug
 ```
 
-> **Example:**  
-> [CrystalBuff] Current Zone: East Ronfaure (101)  
-> [CrystalBuff] Required Buff: Signet  
-> [CrystalBuff] Current Crystal Buff: None  
-> [CrystalBuff] No crystal buff detected, issuing command: !signet
+**Debug Output Examples:**
+```
+[CrystalBuff] Current Zone: East Ronfaure (106)
+[CrystalBuff] Required Buff: Signet
+[CrystalBuff] Current Crystal Buff: None
+[CrystalBuff] Mismatch detected, issuing command: !signet
+```
+
+**City Zone (No Action Needed):**
+```
+[CrystalBuff] Zone "Southern San d'Oria" (230) is a non-combat/city zone. No buff check needed.
+```
+
+### Status Information
+
+Use `/crystalbuff status` to see comprehensive addon information:
+```
+=== CrystalBuff Status ===
+Zone: East Ronfaure (106)
+Required Buff: Signet
+Current Buff: Signet
+Debug Mode: ON
+Cache Size: 12 zones
+```
+
+### Performance Features
+
+- **Command Cooldown:** 10-second minimum between buff commands prevents spam
+- **Zone Caching:** Reduces API calls for improved performance  
+- **Smart Filtering:** Automatically skips checks in cities and safe zones
+- **Debounced Checking:** Limits buff checks to once per 0.5 seconds
 
 
 ## Compatibility
 
 - **Ashita v4** (required)
 - **CatsEyeXI** server ONLY
+- **Version:** 1.3
+
+## Performance
+
+Version 1.3 includes significant performance improvements:
+- Advanced caching system reduces API calls
+- Memory-efficient buff comparison 
+- Optimized zone detection and packet handling
+- Minimal CPU and memory footprint
 
 
 ## License
