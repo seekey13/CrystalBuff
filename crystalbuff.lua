@@ -27,11 +27,11 @@ local last_buffs = {}
 local last_command_time = 0
 local COMMAND_COOLDOWN = 10 -- seconds; rate limit for issuing correction commands
 local debug_mode = false -- Toggle for debug output
-local zone_check_pending = false -- Prevent double execution on zone change
 
 -- Timing constants
 local BUFF_COMMAND_DELAY = 2 -- seconds; delay before issuing buff command
 local BUFF_UPDATE_DELAY = 1 -- seconds; delay to allow buff data to fully update
+local ZONE_IN_DELAY = 10 -- seconds; delay after zone-in to allow zone data to fully load
 
 -- Buff array constants
 local MAX_BUFF_SLOTS = 31 -- Maximum buff slot index (0-31)
@@ -40,8 +40,6 @@ local INVALID_BUFF_ID = 255 -- Invalid/empty buff slot marker
 -- Packet ID constants
 local PKT_ZONE_IN = 0x0A -- Zone in packet
 local PKT_BUFF_UPDATE = 0x037 -- Buff update packet
-local PKT_ROE_MASK = 0x112
-local MASK_OFFSET_BYTE = 133
 
 -- Buff IDs for Signet, Sanction, and Sigil.
 local tracked_buffs = {
@@ -252,18 +250,6 @@ local function check_and_correct_buff_status()
     end
 end
 
--- Handles zone events, ensuring only one check per unique zone.
-local function handle_zone_event()
-    local zone_id = get_zone()
-    if not zone_id then
-        return
-    end
-    if zone_id ~= last_zone then
-        last_zone = zone_id
-        zone_check_pending = false
-    end
-end
-
 -- Updates last_zone and triggers buff check.
 local function update_zone_and_check()
     local zone_id = get_zone()
@@ -287,17 +273,10 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
     if e.id == PKT_ZONE_IN then
         local moghouse = struct.unpack('b', e.data, 0x80 + 1)
         if moghouse ~= 1 then
-            zone_check_pending = true
-        end
-    elseif e.id == PKT_ROE_MASK then
-        local offset = struct.unpack('H', e.data, MASK_OFFSET_BYTE)
-        if offset == 3 then
-            if zone_check_pending then
-                zone_check_pending = false
+            -- Delay zone check to allow zone data to fully load
+            ashita.tasks.once(ZONE_IN_DELAY, function()
                 update_zone_and_check()
-            elseif last_zone == nil then
-                update_zone_and_check()
-            end
+            end)
         end
     elseif e.id == PKT_BUFF_UPDATE then
         local buffs = get_buffs()
@@ -322,10 +301,6 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
                 
                 -- Skip if zone doesn't need buff checking
                 if not should_check_zone(zone_id) then
-                    return
-                end
-                
-                if zone_check_pending then
                     return
                 end
                 
