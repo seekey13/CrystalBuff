@@ -82,6 +82,18 @@ local function get_zone()
     return zone_id
 end
 
+-- Returns the player's current buffs.
+local function get_buffs()
+    local ok, buffs = pcall(function()
+        return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
+    end)
+    if not ok then
+        errorf('Error: Failed to get player buffs.')
+        return nil
+    end
+    return buffs
+end
+
 -- Returns the Ashita resource name for the given zone_id.
 local function get_zone_name(zone_id)
     local ok, name = pcall(function()
@@ -176,11 +188,8 @@ local function check_and_correct_buff_status()
         printf('Required Buff: %s', required_buff)
     end
 
-    local ok_buffs, buffs = pcall(function()
-        return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
-    end)
-    if not ok_buffs then
-        errorf('Error: Failed to get player buffs in check_and_correct_buff_status.')
+    local buffs = get_buffs()
+    if not buffs then
         return
     end
 
@@ -229,10 +238,8 @@ end
 
 -- On addon load, check status immediately (handles user loading without buff or with wrong buff).
 ashita.events.register('load', 'cb_load', function()
-    local ok, buffs = pcall(function()
-        return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
-    end)
-    if ok and buffs then
+    local buffs = get_buffs()
+    if buffs then
         if type(buffs) == "userdata" then
             local buffs_table = {}
             for i = 0, 31 do
@@ -247,7 +254,6 @@ ashita.events.register('load', 'cb_load', function()
         end
     else
         last_buffs = {}
-        errorf('Error: Failed to get player buffs on load.')
     end
 end)
 
@@ -280,11 +286,8 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
             end
         end
     elseif e.id == 0x037 then
-        local ok_buffs, buffs = pcall(function()
-            return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
-        end)
-        if not ok_buffs then
-            errorf('Error: Failed to get player buffs in packet_in (buff change).')
+        local buffs = get_buffs()
+        if not buffs then
             return
         end
         if buffs_changed(buffs, last_buffs) then
@@ -303,11 +306,8 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
             
             -- Add 1 second delay to allow buff data to fully update
             ashita.tasks.once(1, function()
-                local ok_buffs_delayed, buffs_delayed = pcall(function()
-                    return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
-                end)
-                if not ok_buffs_delayed then
-                    errorf('Error: Failed to get player buffs in delayed buff check.')
+                local buffs_delayed = get_buffs()
+                if not buffs_delayed then
                     return
                 end
                 
