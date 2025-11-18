@@ -75,7 +75,7 @@ Uses zone_buffs.lua to determine the required buff for a zone.
 Returns the buff type (Signet, Sanction, Sigil) or nil for zones that should be ignored.
 ]]
 local function get_required_buff(zone_id)
-    return zone_buffs.GetZoneBuff(zone_id)
+    return zone_buffs.get_zone_buff(zone_id)
 end
 
 -- Returns the current zone ID.
