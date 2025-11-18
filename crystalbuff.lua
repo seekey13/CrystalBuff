@@ -30,7 +30,7 @@ local debug_mode = false -- Toggle for debug output
 
 -- Timing constants
 local BUFF_UPDATE_DELAY = 1 -- seconds; delay to allow buff data to fully update
-local ZONE_IN_DELAY = 10 -- seconds; delay after zone-in to allow zone data to fully load
+local COMMAND_DELAY = 10 -- seconds; delay after zone-in or load to allow data to fully load
 
 -- Buff array constants
 local MAX_BUFF_SLOTS = 31 -- Maximum buff slot index (0-31)
@@ -256,8 +256,11 @@ end
 
 -- On addon load, check status immediately (handles user loading without buff or with wrong buff).
 ashita.events.register('load', 'cb_load', function()
-    local buffs = get_buffs()
-    last_buffs = buffs or {}
+    ashita.tasks.once(COMMAND_DELAY, function()
+        local buffs = get_buffs()
+        last_buffs = buffs or {}
+        update_zone_and_check()
+    end)
 end)
 
 ashita.events.register('packet_in', 'cb_packet_in', function(e)
@@ -265,7 +268,7 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
         local moghouse = struct.unpack('b', e.data, 0x80 + 1)
         if moghouse ~= 1 then
             -- Delay zone check to allow zone data to fully load
-            ashita.tasks.once(ZONE_IN_DELAY, function()
+            ashita.tasks.once(COMMAND_DELAY, function()
                 update_zone_and_check()
             end)
         end
