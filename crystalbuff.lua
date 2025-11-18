@@ -70,6 +70,18 @@ local function get_required_buff(zone_id)
     return zone_buffs.GetZoneBuff(zone_id)
 end
 
+-- Returns the current zone ID.
+local function get_zone()
+    local ok, zone_id = pcall(function()
+        return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+    end)
+    if not ok then
+        errorf('Error: Failed to get current zone.')
+        return nil
+    end
+    return zone_id
+end
+
 -- Returns the Ashita resource name for the given zone_id.
 local function get_zone_name(zone_id)
     local ok, name = pcall(function()
@@ -134,11 +146,8 @@ end
 
 -- Main logic: prints status and issues a buff command if needed.
 local function check_and_correct_buff_status()
-    local ok_zone, zone_id = pcall(function()
-        return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
-    end)
-    if not ok_zone then
-        errorf('Error: Failed to get current zone in check_and_correct_buff_status.')
+    local zone_id = get_zone()
+    if not zone_id then
         return
     end
 
@@ -208,11 +217,8 @@ end
 
 -- Handles zone events, ensuring only one check per unique zone.
 local function handle_zone_event()
-    local ok_zone, zone_id = pcall(function()
-        return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
-    end)
-    if not ok_zone then
-        errorf('Error: Failed to get current zone in handle_zone_event.')
+    local zone_id = get_zone()
+    if not zone_id then
         return
     end
     if zone_id ~= last_zone then
@@ -256,11 +262,8 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
         if offset == 3 then
             if zone_check_pending then
                 zone_check_pending = false
-                local ok_zone, zone_id = pcall(function()
-                    return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
-                end)
-                if not ok_zone then
-                    errorf('Error: Failed to get current zone in packet_in (zone change).')
+                local zone_id = get_zone()
+                if not zone_id then
                     return
                 end
                 if zone_id ~= last_zone then
@@ -268,11 +271,8 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
                 end
                 check_and_correct_buff_status()
             elseif last_zone == nil then
-                local ok_zone, zone_id = pcall(function()
-                    return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
-                end)
-                if not ok_zone then
-                    errorf('Error: Failed to get current zone in packet_in (initial load).')
+                local zone_id = get_zone()
+                if not zone_id then
                     return
                 end
                 last_zone = zone_id
@@ -312,11 +312,8 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
                 end
                 
                 local current_buff = get_current_buff(buffs_delayed)
-                local ok_zone, zone_id = pcall(function()
-                    return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
-                end)
-                if not ok_zone then
-                    errorf('Error: Failed to get current zone in delayed buff check.')
+                local zone_id = get_zone()
+                if not zone_id then
                     return
                 end
                 local required_buff = get_required_buff(zone_id)
@@ -345,9 +342,11 @@ ashita.events.register('command', 'cb_command', function(e)
         debug_mode = not debug_mode
         printf('Debug mode %s', debug_mode and 'enabled' or 'disabled')
     elseif #args >= 2 and args[2]:lower() == 'zoneid' then
-        local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
-        local zone_name = get_zone_name(zone_id)
-        printf('Current Zone: %s (%u)', zone_name, zone_id)
+        local zone_id = get_zone()
+        if zone_id then
+            local zone_name = get_zone_name(zone_id)
+            printf('Current Zone: %s (%u)', zone_name, zone_id)
+        end
     else
         printf('Commands:')
         printf('  /crystalbuff debug  - Toggle debug output')
