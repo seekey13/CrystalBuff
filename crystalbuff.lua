@@ -9,7 +9,7 @@ This addon is designed for Ashita v4 and the CatsEyeXI private server.
 
 addon.name      = 'CrystalBuff';
 addon.author    = 'Seekey';
-addon.version   = '1.3';
+addon.version   = '1.4';
 addon.desc      = 'Tracks and corrects crystal buff (Signet, Sanction, Sigil) based on current zone.';
 addon.link      = 'https://github.com/seekey13/CrystalBuff';
 
@@ -46,6 +46,20 @@ local required_buff_commands = {
     ['Sanction'] = '!sanction',
     ['Sigil'] = '!sigil'
 }
+
+-- GetEventSystemActive Code From Thorny
+local pEventSystem = ashita.memory.find('FFXiMain.dll', 0, "A0????????84C0741AA1????????85C0741166A1????????663B05????????0F94C0C3", 0, 0);
+local function get_event_system_active()
+    if (pEventSystem == 0) then
+        return false;
+    end
+    local ptr = ashita.memory.read_uint32(pEventSystem + 1);
+    if (ptr == 0) then
+        return false;
+    end
+
+    return (ashita.memory.read_uint8(ptr) == 1);
+end
 
 --[[
 get_required_buff:
@@ -169,6 +183,14 @@ local function check_and_correct_buff_status()
     if required_buff_commands[required_buff] and found_buff ~= required_buff then
         local now = os.time()
         if (now - last_command_time) >= COMMAND_COOLDOWN then
+            -- Check if event system is active before issuing command
+            if get_event_system_active() then
+                if debug_mode then
+                    warnf('Event system is active, skipping command.')
+                end
+                return
+            end
+            
             -- Add a small fixed delay (2 seconds) to avoid conflicts with other addons
             local delay = 2
             ashita.tasks.once(delay, function()
