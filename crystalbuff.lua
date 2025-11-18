@@ -237,6 +237,19 @@ local function handle_zone_event()
     end
 end
 
+-- Updates last_zone and triggers buff check.
+local function update_zone_and_check()
+    local zone_id = get_zone()
+    if not zone_id then
+        return false
+    end
+    if zone_id ~= last_zone then
+        last_zone = zone_id
+    end
+    check_and_correct_buff_status()
+    return true
+end
+
 -- On addon load, check status immediately (handles user loading without buff or with wrong buff).
 ashita.events.register('load', 'cb_load', function()
     local buffs = get_buffs()
@@ -254,21 +267,9 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
         if offset == 3 then
             if zone_check_pending then
                 zone_check_pending = false
-                local zone_id = get_zone()
-                if not zone_id then
-                    return
-                end
-                if zone_id ~= last_zone then
-                    last_zone = zone_id
-                end
-                check_and_correct_buff_status()
+                update_zone_and_check()
             elseif last_zone == nil then
-                local zone_id = get_zone()
-                if not zone_id then
-                    return
-                end
-                last_zone = zone_id
-                check_and_correct_buff_status()
+                update_zone_and_check()
             end
         end
     elseif e.id == 0x037 then
