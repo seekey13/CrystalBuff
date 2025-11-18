@@ -82,16 +82,34 @@ local function get_zone()
     return zone_id
 end
 
--- Returns the player's current buffs.
+-- Returns the player's current buffs as a filtered table.
 local function get_buffs()
-    local ok, buffs = pcall(function()
-        return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
+    local ok, player = pcall(function()
+        return AshitaCore:GetMemoryManager():GetPlayer()
     end)
-    if not ok then
-        errorf('Error: Failed to get player buffs.')
+    
+    if not ok or not player then
         return nil
     end
-    return buffs
+    
+    local ok_buffs, buffs = pcall(function()
+        return player:GetBuffs()
+    end)
+    
+    if not ok_buffs or not buffs then
+        return nil
+    end
+    
+    -- Filter out invalid buffs (ID 255 or 0) and convert to table
+    local valid_buffs = {}
+    for i = 0, 31 do
+        local buff_id = buffs[i]
+        if buff_id and buff_id ~= 255 and buff_id > 0 then
+            table.insert(valid_buffs, buff_id)
+        end
+    end
+    
+    return valid_buffs
 end
 
 -- Returns the Ashita resource name for the given zone_id.
@@ -105,18 +123,9 @@ end
 -- Finds the first matching tracked buff in player's buffs.
 local function get_current_buff(buffs)
     if not buffs then return nil end
-    if type(buffs) == "userdata" then
-        for i = 0, 31 do
-            local buff_id = buffs[i]
-            if buff_id and buff_id > 0 and tracked_buffs[buff_id] then
-                return tracked_buffs[buff_id]
-            end
-        end
-    else
-        for _, buff_id in ipairs(buffs) do
-            if tracked_buffs[buff_id] then
-                return tracked_buffs[buff_id]
-            end
+    for _, buff_id in ipairs(buffs) do
+        if tracked_buffs[buff_id] then
+            return tracked_buffs[buff_id]
         end
     end
     return nil
@@ -124,25 +133,17 @@ end
 
 -- Returns true if the buff arrays differ.
 local function buffs_changed(new, old)
-    -- Convert userdata to table if needed
-    local new_table = {}
-    local old_table = old or {}
-    if type(new) == "userdata" then
-        for i = 0, 31 do
-            local buff_id = new[i]
-            if buff_id and buff_id > 0 then
-                table.insert(new_table, buff_id)
-            end
-        end
-    else
-        new_table = new or {}
-    end
-    if #new_table ~= #old_table then return true end
-    for i = 1, #new_table do
-        if new_table[i] ~= old_table[i] then
+    local new_buffs = new or {}
+    local old_buffs = old or {}
+    
+    if #new_buffs ~= #old_buffs then return true end
+    
+    for i = 1, #new_buffs do
+        if new_buffs[i] ~= old_buffs[i] then
             return true
         end
     end
+    
     return false
 end
 
@@ -239,22 +240,7 @@ end
 -- On addon load, check status immediately (handles user loading without buff or with wrong buff).
 ashita.events.register('load', 'cb_load', function()
     local buffs = get_buffs()
-    if buffs then
-        if type(buffs) == "userdata" then
-            local buffs_table = {}
-            for i = 0, 31 do
-                local buff_id = buffs[i]
-                if buff_id and buff_id > 0 then
-                    table.insert(buffs_table, buff_id)
-                end
-            end
-            last_buffs = buffs_table
-        else
-            last_buffs = buffs
-        end
-    else
-        last_buffs = {}
-    end
+    last_buffs = buffs or {}
 end)
 
 ashita.events.register('packet_in', 'cb_packet_in', function(e)
@@ -291,18 +277,7 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
             return
         end
         if buffs_changed(buffs, last_buffs) then
-            if type(buffs) == "userdata" then
-                local buffs_table = {}
-                for i = 0, 31 do
-                    local buff_id = buffs[i]
-                    if buff_id and buff_id > 0 then
-                        table.insert(buffs_table, buff_id)
-                    end
-                end
-                last_buffs = buffs_table
-            else
-                last_buffs = buffs
-            end
+            last_buffs = buffs
             
             -- Add 1 second delay to allow buff data to fully update
             ashita.tasks.once(1, function()
