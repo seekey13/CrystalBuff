@@ -167,6 +167,15 @@ local function is_world_ready()
     return ok and p and not p.isZoning and e
 end
 
+-- Returns true if zone requires buff checking (not non-combat and has a required buff).
+local function should_check_zone(zone_id)
+    if zone_buffs.non_combat_zones[zone_id] then
+        return false
+    end
+    local required_buff = get_required_buff(zone_id)
+    return required_buff ~= nil
+end
+
 -- Main logic: prints status and issues a buff command if needed.
 local function check_and_correct_buff_status()
     local zone_id = get_zone()
@@ -176,23 +185,19 @@ local function check_and_correct_buff_status()
 
     local zone_name = get_zone_name(zone_id)
 
-    -- Non-combat/city zone filter
-    if zone_buffs.non_combat_zones[zone_id] then
+    -- Check if zone requires buff checking
+    if not should_check_zone(zone_id) then
         if debug_mode then
-            printf('Zone "%s" (%u) is a non-combat/city zone. No buff check needed.', zone_name, zone_id)
+            if zone_buffs.non_combat_zones[zone_id] then
+                printf('Zone "%s" (%u) is a non-combat/city zone. No buff check needed.', zone_name, zone_id)
+            else
+                printf('Zone "%s" (%u) requires no crystal buff.', zone_name, zone_id)
+            end
         end
         return
     end
 
     local required_buff = get_required_buff(zone_id)
-    
-    -- If no buff is needed (nil)
-    if not required_buff then
-        if debug_mode then
-            printf('Zone "%s" (%u) requires no crystal buff.', zone_name, zone_id)
-        end
-        return
-    end
 
     if debug_mode then
         printf('Current Zone: %s (%u)', zone_name, zone_id)
@@ -301,13 +306,17 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
                 if not zone_id then
                     return
                 end
-                local required_buff = get_required_buff(zone_id)
-                if zone_buffs.non_combat_zones[zone_id] or not required_buff then
+                
+                -- Skip if zone doesn't need buff checking
+                if not should_check_zone(zone_id) then
                     return
                 end
+                
                 if zone_check_pending then
                     return
                 end
+                
+                local required_buff = get_required_buff(zone_id)
                 if is_world_ready() and (not current_buff or current_buff ~= required_buff) then
                     check_and_correct_buff_status()
                 end
