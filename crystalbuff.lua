@@ -92,13 +92,26 @@ local function get_zone()
     return zone_id
 end
 
--- Returns the player's current buffs as a filtered table.
-local function get_buffs()
+-- Returns the player object.
+local function get_player()
     local ok, player = pcall(function()
         return AshitaCore:GetMemoryManager():GetPlayer()
     end)
-    
     if not ok or not player then
+        return nil
+    end
+    return player
+end
+
+-- Queues a command to be executed by the chat manager.
+local function queue_command(cmd)
+    AshitaCore:GetChatManager():QueueCommand(-1, cmd)
+end
+
+-- Returns the player's current buffs as a filtered table.
+local function get_buffs()
+    local player = get_player()
+    if not player then
         return nil
     end
     
@@ -159,12 +172,12 @@ end
 
 -- Returns true if the world is ready (not zoning and player entity exists).
 local function is_world_ready()
-    local ok, p = pcall(function() return AshitaCore:GetMemoryManager():GetPlayer() end)
-    if not ok then
-        errorf('Error: Failed to access player object.')
+    local player = get_player()
+    if not player then
+        return false
     end
-    local e = ok and (GetPlayerEntity and GetPlayerEntity())
-    return ok and p and not p.isZoning and e
+    local entity = GetPlayerEntity and GetPlayerEntity()
+    return player and not player.isZoning and entity
 end
 
 -- Returns true if zone requires buff checking (not non-combat and has a required buff).
@@ -229,7 +242,7 @@ local function check_and_correct_buff_status()
             ashita.tasks.once(BUFF_COMMAND_DELAY, function()
                 local cmd = required_buff_commands[required_buff]
                 printf('Mismatch detected, issuing command: %s', cmd)
-                AshitaCore:GetChatManager():QueueCommand(-1, cmd)
+                queue_command(cmd)
             end)
             last_command_time = now
         else
