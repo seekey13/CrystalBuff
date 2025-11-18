@@ -29,7 +29,6 @@ local COMMAND_COOLDOWN = 10 -- seconds; rate limit for issuing correction comman
 local debug_mode = false -- Toggle for debug output
 
 -- Timing constants
-local BUFF_COMMAND_DELAY = 2 -- seconds; delay before issuing buff command
 local BUFF_UPDATE_DELAY = 1 -- seconds; delay to allow buff data to fully update
 local ZONE_IN_DELAY = 10 -- seconds; delay after zone-in to allow zone data to fully load
 
@@ -231,12 +230,9 @@ local function check_and_correct_buff_status()
                 return
             end
             
-            -- Add a small delay to avoid conflicts with other addons
-            ashita.tasks.once(BUFF_COMMAND_DELAY, function()
-                local cmd = required_buff_commands[required_buff]
-                printf('Mismatch detected, issuing command: %s', cmd)
-                queue_command(cmd)
-            end)
+            local cmd = required_buff_commands[required_buff]
+            printf('Mismatch detected, issuing command: %s', cmd)
+            queue_command(cmd)
             last_command_time = now
         else
             local remaining = COMMAND_COOLDOWN - (now - last_command_time)
