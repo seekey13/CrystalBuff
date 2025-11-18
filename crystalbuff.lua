@@ -29,7 +29,17 @@ local COMMAND_COOLDOWN = 10 -- seconds; rate limit for issuing correction comman
 local debug_mode = false -- Toggle for debug output
 local zone_check_pending = false -- Prevent double execution on zone change
 
--- RoE mask packet constants
+-- Timing constants
+local BUFF_COMMAND_DELAY = 2 -- seconds; delay before issuing buff command
+local BUFF_UPDATE_DELAY = 1 -- seconds; delay to allow buff data to fully update
+
+-- Buff array constants
+local MAX_BUFF_SLOTS = 31 -- Maximum buff slot index (0-31)
+local INVALID_BUFF_ID = 255 -- Invalid/empty buff slot marker
+
+-- Packet ID constants
+local PKT_ZONE_IN = 0x0A -- Zone in packet
+local PKT_BUFF_UPDATE = 0x037 -- Buff update packet
 local PKT_ROE_MASK = 0x112
 local MASK_OFFSET_BYTE = 133
 
@@ -102,9 +112,9 @@ local function get_buffs()
     
     -- Filter out invalid buffs (ID 255 or 0) and convert to table
     local valid_buffs = {}
-    for i = 0, 31 do
+    for i = 0, MAX_BUFF_SLOTS do
         local buff_id = buffs[i]
-        if buff_id and buff_id ~= 255 and buff_id > 0 then
+        if buff_id and buff_id ~= INVALID_BUFF_ID and buff_id > 0 then
             table.insert(valid_buffs, buff_id)
         end
     end
@@ -210,9 +220,8 @@ local function check_and_correct_buff_status()
                 return
             end
             
-            -- Add a small fixed delay (2 seconds) to avoid conflicts with other addons
-            local delay = 2
-            ashita.tasks.once(delay, function()
+            -- Add a small delay to avoid conflicts with other addons
+            ashita.tasks.once(BUFF_COMMAND_DELAY, function()
                 local cmd = required_buff_commands[required_buff]
                 printf('Mismatch detected, issuing command: %s', cmd)
                 AshitaCore:GetChatManager():QueueCommand(-1, cmd)
@@ -257,7 +266,7 @@ ashita.events.register('load', 'cb_load', function()
 end)
 
 ashita.events.register('packet_in', 'cb_packet_in', function(e)
-    if e.id == 0x0A then
+    if e.id == PKT_ZONE_IN then
         local moghouse = struct.unpack('b', e.data, 0x80 + 1)
         if moghouse ~= 1 then
             zone_check_pending = true
@@ -272,7 +281,7 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
                 update_zone_and_check()
             end
         end
-    elseif e.id == 0x037 then
+    elseif e.id == PKT_BUFF_UPDATE then
         local buffs = get_buffs()
         if not buffs then
             return
@@ -280,8 +289,8 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
         if buffs_changed(buffs, last_buffs) then
             last_buffs = buffs
             
-            -- Add 1 second delay to allow buff data to fully update
-            ashita.tasks.once(1, function()
+            -- Add delay to allow buff data to fully update
+            ashita.tasks.once(BUFF_UPDATE_DELAY, function()
                 local buffs_delayed = get_buffs()
                 if not buffs_delayed then
                     return
