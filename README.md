@@ -127,6 +127,13 @@ Completely unnecessary AI generated image
 
 ## Changelog
 
+### Version 1.4 (Current)
+- Added event system detection to prevent commands during cutscenes/events
+- Implemented 10-second startup delay after addon load for data initialization
+- Implemented 10-second delay after zone-in before buff checks begin
+- Improved timing logic to prevent premature buff corrections
+- Enhanced world ready state detection for better reliability
+
 ### Version 1.3
 - Added 1-second delay for buff change detection to improve accuracy
 - Enhanced packet handling for more reliable zone and buff detection
