@@ -9,7 +9,7 @@ This addon is designed for Ashita v4 and the CatsEyeXI private server.
 
 addon.name      = 'CrystalBuff';
 addon.author    = 'Seekey';
-addon.version   = '1.3';
+addon.version   = '1.4';
 addon.desc      = 'Tracks and corrects crystal buff (Signet, Sanction, Sigil) based on current zone.';
 addon.link      = 'https://github.com/seekey13/CrystalBuff';
 
@@ -27,11 +27,18 @@ local last_buffs = {}
 local last_command_time = 0
 local COMMAND_COOLDOWN = 10 -- seconds; rate limit for issuing correction commands
 local debug_mode = false -- Toggle for debug output
-local zone_check_pending = false -- Prevent double execution on zone change
 
--- RoE mask packet constants
-local PKT_ROE_MASK = 0x112
-local MASK_OFFSET_BYTE = 133
+-- Timing constants
+local BUFF_UPDATE_DELAY = 1 -- seconds; delay to allow buff data to fully update
+local COMMAND_DELAY = 10 -- seconds; delay after zone-in or load to allow data to fully load
+
+-- Buff array constants
+local MAX_BUFF_SLOTS = 31 -- Maximum buff slot index (0-31)
+local INVALID_BUFF_ID = 255 -- Invalid/empty buff slot marker
+
+-- Packet ID constants
+local PKT_ZONE_IN = 0x0A -- Zone in packet
+local PKT_BUFF_UPDATE = 0x037 -- Buff update packet
 
 -- Buff IDs for Signet, Sanction, and Sigil.
 local tracked_buffs = {
@@ -47,13 +54,82 @@ local required_buff_commands = {
     ['Sigil'] = '!sigil'
 }
 
+-- GetEventSystemActive Code From Thorny
+local pEventSystem = ashita.memory.find('FFXiMain.dll', 0, "A0????????84C0741AA1????????85C0741166A1????????663B05????????0F94C0C3", 0, 0);
+local function get_event_system_active()
+    if (pEventSystem == 0) then
+        return false;
+    end
+    local ptr = ashita.memory.read_uint32(pEventSystem + 1);
+    if (ptr == 0) then
+        return false;
+    end
+
+    return (ashita.memory.read_uint8(ptr) == 1);
+end
+
 --[[
 get_required_buff:
 Uses zone_buffs.lua to determine the required buff for a zone.
 Returns the buff type (Signet, Sanction, Sigil) or nil for zones that should be ignored.
 ]]
 local function get_required_buff(zone_id)
-    return zone_buffs.GetZoneBuff(zone_id)
+    return zone_buffs.get_zone_buff(zone_id)
+end
+
+-- Returns the current zone ID.
+local function get_zone()
+    local ok, zone_id = pcall(function()
+        return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
+    end)
+    if not ok then
+        errorf('Error: Failed to get current zone.')
+        return nil
+    end
+    return zone_id
+end
+
+-- Returns the player object.
+local function get_player()
+    local ok, player = pcall(function()
+        return AshitaCore:GetMemoryManager():GetPlayer()
+    end)
+    if not ok or not player then
+        return nil
+    end
+    return player
+end
+
+-- Queues a command to be executed by the chat manager.
+local function queue_command(cmd)
+    AshitaCore:GetChatManager():QueueCommand(-1, cmd)
+end
+
+-- Returns the player's current buffs as a filtered table.
+local function get_buffs()
+    local player = get_player()
+    if not player then
+        return nil
+    end
+    
+    local ok_buffs, buffs = pcall(function()
+        return player:GetBuffs()
+    end)
+    
+    if not ok_buffs or not buffs then
+        return nil
+    end
+    
+    -- Filter out invalid buffs (ID 255 or 0) and convert to table
+    local valid_buffs = {}
+    for i = 0, MAX_BUFF_SLOTS do
+        local buff_id = buffs[i]
+        if buff_id and buff_id ~= INVALID_BUFF_ID and buff_id > 0 then
+            table.insert(valid_buffs, buff_id)
+        end
+    end
+    
+    return valid_buffs
 end
 
 -- Returns the Ashita resource name for the given zone_id.
@@ -67,18 +143,9 @@ end
 -- Finds the first matching tracked buff in player's buffs.
 local function get_current_buff(buffs)
     if not buffs then return nil end
-    if type(buffs) == "userdata" then
-        for i = 0, 31 do
-            local buff_id = buffs[i]
-            if buff_id and buff_id > 0 and tracked_buffs[buff_id] then
-                return tracked_buffs[buff_id]
-            end
-        end
-    else
-        for _, buff_id in ipairs(buffs) do
-            if tracked_buffs[buff_id] then
-                return tracked_buffs[buff_id]
-            end
+    for _, buff_id in ipairs(buffs) do
+        if tracked_buffs[buff_id] then
+            return tracked_buffs[buff_id]
         end
     end
     return nil
@@ -86,51 +153,40 @@ end
 
 -- Returns true if the buff arrays differ.
 local function buffs_changed(new, old)
-    -- Convert userdata to table if needed
-    local new_table = {}
-    local old_table = old or {}
-    if type(new) == "userdata" then
-        for i = 0, 31 do
-            local buff_id = new[i]
-            if buff_id and buff_id > 0 then
-                table.insert(new_table, buff_id)
-            end
-        end
-    else
-        new_table = new or {}
-    end
-    if #new_table ~= #old_table then return true end
-    for i = 1, #new_table do
-        if new_table[i] ~= old_table[i] then
+    local new_buffs = new or {}
+    local old_buffs = old or {}
+    
+    if #new_buffs ~= #old_buffs then return true end
+    
+    for i = 1, #new_buffs do
+        if new_buffs[i] ~= old_buffs[i] then
             return true
         end
     end
+    
     return false
 end
 
 -- Returns true if the world is ready (not zoning and player entity exists).
 local function is_world_ready()
-    local ok, p = pcall(function() return AshitaCore:GetMemoryManager():GetPlayer() end)
-    if not ok then
-        errorf('Error: Failed to access player object.')
+    local player = get_player()
+    if not player then
+        return false
     end
-    local e = ok and (GetPlayerEntity and GetPlayerEntity())
-    return ok and p and not p.isZoning and e
+    local entity = GetPlayerEntity and GetPlayerEntity()
+    return player and not player.isZoning and entity
 end
 
 -- Main logic: prints status and issues a buff command if needed.
 local function check_and_correct_buff_status()
-    local ok_zone, zone_id = pcall(function()
-        return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
-    end)
-    if not ok_zone then
-        errorf('Error: Failed to get current zone in check_and_correct_buff_status.')
+    local zone_id = get_zone()
+    if not zone_id then
         return
     end
 
     local zone_name = get_zone_name(zone_id)
 
-    -- Non-combat/city zone filter
+    -- Skip non-combat zones
     if zone_buffs.non_combat_zones[zone_id] then
         if debug_mode then
             printf('Zone "%s" (%u) is a non-combat/city zone. No buff check needed.', zone_name, zone_id)
@@ -140,7 +196,7 @@ local function check_and_correct_buff_status()
 
     local required_buff = get_required_buff(zone_id)
     
-    -- If no buff is needed (nil)
+    -- Skip zones that don't require a buff
     if not required_buff then
         if debug_mode then
             printf('Zone "%s" (%u) requires no crystal buff.', zone_name, zone_id)
@@ -153,11 +209,8 @@ local function check_and_correct_buff_status()
         printf('Required Buff: %s', required_buff)
     end
 
-    local ok_buffs, buffs = pcall(function()
-        return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
-    end)
-    if not ok_buffs then
-        errorf('Error: Failed to get player buffs in check_and_correct_buff_status.')
+    local buffs = get_buffs()
+    if not buffs then
         return
     end
 
@@ -169,13 +222,17 @@ local function check_and_correct_buff_status()
     if required_buff_commands[required_buff] and found_buff ~= required_buff then
         local now = os.time()
         if (now - last_command_time) >= COMMAND_COOLDOWN then
-            -- Add a small fixed delay (2 seconds) to avoid conflicts with other addons
-            local delay = 2
-            ashita.tasks.once(delay, function()
-                local cmd = required_buff_commands[required_buff]
-                printf('Mismatch detected, issuing command: %s', cmd)
-                AshitaCore:GetChatManager():QueueCommand(-1, cmd)
-            end)
+            -- Check if event system is active before issuing command
+            if get_event_system_active() then
+                if debug_mode then
+                    warnf('Event system is active, skipping command.')
+                end
+                return
+            end
+            
+            local cmd = required_buff_commands[required_buff]
+            printf('Mismatch detected, issuing command: %s', cmd)
+            queue_command(cmd)
             last_command_time = now
         else
             local remaining = COMMAND_COOLDOWN - (now - last_command_time)
@@ -184,126 +241,68 @@ local function check_and_correct_buff_status()
     end
 end
 
--- Handles zone events, ensuring only one check per unique zone.
-local function handle_zone_event()
-    local ok_zone, zone_id = pcall(function()
-        return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
-    end)
-    if not ok_zone then
-        errorf('Error: Failed to get current zone in handle_zone_event.')
-        return
+-- Updates last_zone and triggers buff check.
+local function update_zone_and_check()
+    local zone_id = get_zone()
+    if not zone_id then
+        return false
     end
     if zone_id ~= last_zone then
         last_zone = zone_id
-        zone_check_pending = false
     end
+    check_and_correct_buff_status()
+    return true
 end
 
 -- On addon load, check status immediately (handles user loading without buff or with wrong buff).
 ashita.events.register('load', 'cb_load', function()
-    local ok, buffs = pcall(function()
-        return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
+    ashita.tasks.once(COMMAND_DELAY, function()
+        local buffs = get_buffs()
+        last_buffs = buffs or {}
+        update_zone_and_check()
     end)
-    if ok and buffs then
-        if type(buffs) == "userdata" then
-            local buffs_table = {}
-            for i = 0, 31 do
-                local buff_id = buffs[i]
-                if buff_id and buff_id > 0 then
-                    table.insert(buffs_table, buff_id)
-                end
-            end
-            last_buffs = buffs_table
-        else
-            last_buffs = buffs
-        end
-    else
-        last_buffs = {}
-        errorf('Error: Failed to get player buffs on load.')
-    end
 end)
 
 ashita.events.register('packet_in', 'cb_packet_in', function(e)
-    if e.id == 0x0A then
+    if e.id == PKT_ZONE_IN then
         local moghouse = struct.unpack('b', e.data, 0x80 + 1)
         if moghouse ~= 1 then
-            zone_check_pending = true
+            -- Delay zone check to allow zone data to fully load
+            ashita.tasks.once(COMMAND_DELAY, function()
+                update_zone_and_check()
+            end)
         end
-    elseif e.id == PKT_ROE_MASK then
-        local offset = struct.unpack('H', e.data, MASK_OFFSET_BYTE)
-        if offset == 3 then
-            if zone_check_pending then
-                zone_check_pending = false
-                local ok_zone, zone_id = pcall(function()
-                    return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
-                end)
-                if not ok_zone then
-                    errorf('Error: Failed to get current zone in packet_in (zone change).')
-                    return
-                end
-                if zone_id ~= last_zone then
-                    last_zone = zone_id
-                end
-                check_and_correct_buff_status()
-            elseif last_zone == nil then
-                local ok_zone, zone_id = pcall(function()
-                    return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
-                end)
-                if not ok_zone then
-                    errorf('Error: Failed to get current zone in packet_in (initial load).')
-                    return
-                end
-                last_zone = zone_id
-                check_and_correct_buff_status()
-            end
-        end
-    elseif e.id == 0x037 then
-        local ok_buffs, buffs = pcall(function()
-            return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
-        end)
-        if not ok_buffs then
-            errorf('Error: Failed to get player buffs in packet_in (buff change).')
+    elseif e.id == PKT_BUFF_UPDATE then
+        local buffs = get_buffs()
+        if not buffs then
             return
         end
         if buffs_changed(buffs, last_buffs) then
-            if type(buffs) == "userdata" then
-                local buffs_table = {}
-                for i = 0, 31 do
-                    local buff_id = buffs[i]
-                    if buff_id and buff_id > 0 then
-                        table.insert(buffs_table, buff_id)
-                    end
-                end
-                last_buffs = buffs_table
-            else
-                last_buffs = buffs
-            end
+            last_buffs = buffs
             
-            -- Add 1 second delay to allow buff data to fully update
-            ashita.tasks.once(1, function()
-                local ok_buffs_delayed, buffs_delayed = pcall(function()
-                    return AshitaCore:GetMemoryManager():GetPlayer():GetBuffs()
-                end)
-                if not ok_buffs_delayed then
-                    errorf('Error: Failed to get player buffs in delayed buff check.')
+            -- Add delay to allow buff data to fully update
+            ashita.tasks.once(BUFF_UPDATE_DELAY, function()
+                local buffs_delayed = get_buffs()
+                if not buffs_delayed then
                     return
                 end
                 
                 local current_buff = get_current_buff(buffs_delayed)
-                local ok_zone, zone_id = pcall(function()
-                    return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
-                end)
-                if not ok_zone then
-                    errorf('Error: Failed to get current zone in delayed buff check.')
+                local zone_id = get_zone()
+                if not zone_id then
                     return
                 end
+                
+                -- Skip non-combat zones and zones without required buffs
+                if zone_buffs.non_combat_zones[zone_id] then
+                    return
+                end
+                
                 local required_buff = get_required_buff(zone_id)
-                if zone_buffs.non_combat_zones[zone_id] or not required_buff then
+                if not required_buff then
                     return
                 end
-                if zone_check_pending then
-                    return
-                end
+                
                 if is_world_ready() and (not current_buff or current_buff ~= required_buff) then
                     check_and_correct_buff_status()
                 end
@@ -323,9 +322,11 @@ ashita.events.register('command', 'cb_command', function(e)
         debug_mode = not debug_mode
         printf('Debug mode %s', debug_mode and 'enabled' or 'disabled')
     elseif #args >= 2 and args[2]:lower() == 'zoneid' then
-        local zone_id = AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
-        local zone_name = get_zone_name(zone_id)
-        printf('Current Zone: %s (%u)', zone_name, zone_id)
+        local zone_id = get_zone()
+        if zone_id then
+            local zone_name = get_zone_name(zone_id)
+            printf('Current Zone: %s (%u)', zone_name, zone_id)
+        end
     else
         printf('Commands:')
         printf('  /crystalbuff debug  - Toggle debug output')
