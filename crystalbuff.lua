@@ -25,6 +25,7 @@ local function errorf(fmt, ...)  print(chat.header(addon.name) .. chat.error  (f
 local last_zone = nil
 local last_buffs = {}
 local last_command_time = 0
+local zone_grace_period_end = 0 -- Timestamp when zone grace period ends
 local COMMAND_COOLDOWN = 10 -- seconds; rate limit for issuing correction commands
 local debug_mode = false -- Toggle for debug output
 
@@ -179,6 +180,24 @@ end
 
 -- Main logic: prints status and issues a buff command if needed.
 local function check_and_correct_buff_status()
+    -- Check if we're in zone grace period
+    local now = os.time()
+    if now < zone_grace_period_end then
+        if debug_mode then
+            local remaining = zone_grace_period_end - now
+            warnf('Zone grace period active, %d seconds remaining.', remaining)
+        end
+        return
+    end
+    
+    -- Ensure world is ready before checking buffs
+    if not is_world_ready() then
+        if debug_mode then
+            warnf('World not ready, skipping buff check.')
+        end
+        return
+    end
+    
     local zone_id = get_zone()
     if not zone_id then
         return
@@ -256,10 +275,19 @@ end
 
 -- On addon load, check status immediately (handles user loading without buff or with wrong buff).
 ashita.events.register('load', 'cb_load', function()
+
+    -- Set grace period to prevent buff checks during initial load
+    zone_grace_period_end = os.time() + COMMAND_DELAY
+    
     ashita.tasks.once(COMMAND_DELAY, function()
-        local buffs = get_buffs()
-        last_buffs = buffs or {}
-        update_zone_and_check()
+        -- Verify world is ready before initial check
+        if is_world_ready() then
+            local buffs = get_buffs()
+            last_buffs = buffs or {}
+            update_zone_and_check()
+        elseif debug_mode then
+            warnf('World not ready after load delay, skipping initial check.')
+        end
     end)
 end)
 
@@ -267,9 +295,20 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
     if e.id == PKT_ZONE_IN then
         local moghouse = struct.unpack('b', e.data, 0x80 + 1)
         if moghouse ~= 1 then
+            -- Set grace period to prevent buff checks during zone-in
+            zone_grace_period_end = os.time() + COMMAND_DELAY
+            if debug_mode then
+                printf('Zone change detected, grace period set for %d seconds.', COMMAND_DELAY)
+            end
+            
             -- Delay zone check to allow zone data to fully load
             ashita.tasks.once(COMMAND_DELAY, function()
-                update_zone_and_check()
+                -- Verify world is ready after delay
+                if is_world_ready() then
+                    update_zone_and_check()
+                elseif debug_mode then
+                    warnf('World not ready after zone-in delay, skipping check.')
+                end
             end)
         end
     elseif e.id == PKT_BUFF_UPDATE then
