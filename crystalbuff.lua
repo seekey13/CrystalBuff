@@ -28,10 +28,6 @@ local last_command_time = 0
 local COMMAND_COOLDOWN = 10 -- seconds; rate limit for issuing correction commands
 local debug_mode = false -- Toggle for debug output
 
--- Timing constants
-local BUFF_UPDATE_DELAY = 1 -- seconds; delay to allow buff data to fully update
-local COMMAND_DELAY = 10 -- seconds; delay after zone-in or load to allow data to fully load
-
 -- Buff array constants
 local MAX_BUFF_SLOTS = 31 -- Maximum buff slot index (0-31)
 local INVALID_BUFF_ID = 255 -- Invalid/empty buff slot marker
@@ -167,6 +163,14 @@ local function buffs_changed(new, old)
     return false
 end
 
+-- Returns true if the player data has not finished loading yet.
+local function is_loading()
+    local player = AshitaCore:GetMemoryManager():GetPlayer()
+    if not player then return true end
+    local level = player:GetMainJobLevel()
+    return not level or level == 0
+end
+
 -- Returns true if the world is ready (not zoning and player entity exists).
 local function is_world_ready()
     local player = get_player()
@@ -256,21 +260,22 @@ end
 
 -- On addon load, check status immediately (handles user loading without buff or with wrong buff).
 ashita.events.register('load', 'cb_load', function()
-    ashita.tasks.once(COMMAND_DELAY, function()
-        local buffs = get_buffs()
-        last_buffs = buffs or {}
-        update_zone_and_check()
-    end)
+    if is_loading() then
+        return
+    end
+    local buffs = get_buffs()
+    last_buffs = buffs or {}
+    update_zone_and_check()
 end)
 
 ashita.events.register('packet_in', 'cb_packet_in', function(e)
     if e.id == PKT_ZONE_IN then
         local moghouse = struct.unpack('b', e.data, 0x80 + 1)
         if moghouse ~= 1 then
-            -- Delay zone check to allow zone data to fully load
-            ashita.tasks.once(COMMAND_DELAY, function()
-                update_zone_and_check()
-            end)
+            if is_loading() then
+                return
+            end
+            update_zone_and_check()
         end
     elseif e.id == PKT_BUFF_UPDATE then
         local buffs = get_buffs()
@@ -279,34 +284,26 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
         end
         if buffs_changed(buffs, last_buffs) then
             last_buffs = buffs
-            
-            -- Add delay to allow buff data to fully update
-            ashita.tasks.once(BUFF_UPDATE_DELAY, function()
-                local buffs_delayed = get_buffs()
-                if not buffs_delayed then
-                    return
-                end
-                
-                local current_buff = get_current_buff(buffs_delayed)
-                local zone_id = get_zone()
-                if not zone_id then
-                    return
-                end
-                
-                -- Skip non-combat zones and zones without required buffs
-                if zone_buffs.non_combat_zones[zone_id] then
-                    return
-                end
-                
-                local required_buff = get_required_buff(zone_id)
-                if not required_buff then
-                    return
-                end
-                
-                if is_world_ready() and (not current_buff or current_buff ~= required_buff) then
-                    check_and_correct_buff_status()
-                end
-            end)
+
+            local current_buff = get_current_buff(buffs)
+            local zone_id = get_zone()
+            if not zone_id then
+                return
+            end
+
+            -- Skip non-combat zones and zones without required buffs
+            if zone_buffs.non_combat_zones[zone_id] then
+                return
+            end
+
+            local required_buff = get_required_buff(zone_id)
+            if not required_buff then
+                return
+            end
+
+            if is_world_ready() and (not current_buff or current_buff ~= required_buff) then
+                check_and_correct_buff_status()
+            end
         end
     end
 end)
