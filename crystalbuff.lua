@@ -151,23 +151,17 @@ local function check_and_correct_buff()
     end
 
     if not pending_buff_check then return end
+    pending_buff_check = false
 
     local zone_id = get_zone()
     if not zone_id then return end
 
-    if zone_buffs.non_combat_zones[zone_id] then
-        pending_buff_check = false
-        return
-    end
+    if zone_buffs.non_combat_zones[zone_id] then return end
 
     local required_buff = zone_buffs.get_zone_buff(zone_id)
-    if not required_buff then
-        pending_buff_check = false
-        return
-    end
+    if not required_buff then return end
 
     local found_buff = get_current_buff(buffs)
-    pending_buff_check = false
     if found_buff ~= required_buff then
         local cmd = tracked_buffs[required_buff].command
         printf('Mismatch detected, issuing command: %s', cmd)
