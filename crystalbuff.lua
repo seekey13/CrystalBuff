@@ -29,14 +29,12 @@ local INVALID_BUFF_ID = 255 -- Invalid/empty buff slot marker
 -- Packet ID constants
 local PKT_ZONE_IN = 0x0A -- Zone in packet
 
--- Buff IDs mapped to name and correction command (single source of truth).
+-- Buff names mapped to ID and correction command (single source of truth).
 local tracked_buffs = {
-    [253] = { name = 'Signet',   command = '!signet'   },
-    [256] = { name = 'Sanction', command = '!sanction' },
-    [268] = { name = 'Sigil',    command = '!sigil'    },
+    Signet   = { id = 253, command = '!signet'   },
+    Sanction = { id = 256, command = '!sanction' },
+    Sigil    = { id = 268, command = '!sigil'    },
 }
-local buff_commands = {}
-for _, v in pairs(tracked_buffs) do buff_commands[v.name] = v.command end
 
 -- GetEventSystemActive Code From Thorny
 local pEventSystem = ashita.memory.find('FFXiMain.dll', 0, "A0????????84C0741AA1????????85C0741166A1????????663B05????????0F94C0C3", 0, 0);
@@ -122,12 +120,12 @@ local function get_zone_name(zone_id)
     return (ok and name) or ('Unknown Zone [' .. tostring(zone_id) .. ']')
 end
 
--- Finds the first matching tracked buff in player's buffs.
+-- Finds the first matching tracked buff name in player's buffs.
 local function get_current_buff(buffs)
     if not buffs then return nil end
     for _, buff_id in ipairs(buffs) do
-        if tracked_buffs[buff_id] then
-            return tracked_buffs[buff_id].name
+        for name, entry in pairs(tracked_buffs) do
+            if entry.id == buff_id then return name end
         end
     end
 end
@@ -169,13 +167,11 @@ local function check_and_correct_buff()
     end
 
     local found_buff = get_current_buff(buffs)
-    if found_buff == required_buff then
-        pending_buff_check = false
-    else
-        local cmd = buff_commands[required_buff]
+    pending_buff_check = false
+    if found_buff ~= required_buff then
+        local cmd = tracked_buffs[required_buff].command
         printf('Mismatch detected, issuing command: %s', cmd)
         queue_command(cmd)
-        pending_buff_check = false
     end
 end
 
