@@ -16,12 +16,6 @@ addon.link      = 'https://github.com/seekey13/CrystalBuff';
 require('common');
 local chat = require('chat')
 local zone_buffs = require('zone_buffs');
-
--- Custom print functions for categorized output.
-local function printf(fmt, ...)  print(chat.header(addon.name) .. chat.message(fmt:format(...))) end
-local function warnf(fmt, ...)   print(chat.header(addon.name) .. chat.warning(fmt:format(...))) end
-local function errorf(fmt, ...)  print(chat.header(addon.name) .. chat.error  (fmt:format(...))) end
-
 local last_buffs = {}
 local pending_buff_check = false
 
@@ -80,7 +74,6 @@ local function get_zone()
         return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
     end)
     if not ok then
-        errorf('Error: Failed to get current zone.')
         return nil
     end
     return zone_id
