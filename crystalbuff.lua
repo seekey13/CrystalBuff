@@ -19,6 +19,9 @@ local zone_buffs = require('zone_buffs');
 local last_buffs = {}
 local pending_buff_check = false
 
+-- Custom print functions for categorized output.
+local function printf(fmt, ...)  print(chat.header(addon.name) .. chat.message(fmt:format(...))) end
+
 -- Buff array constants
 local MAX_BUFF_SLOTS = 31 -- Maximum buff slot index (0-31)
 local INVALID_BUFF_ID = 255 -- Invalid/empty buff slot marker
