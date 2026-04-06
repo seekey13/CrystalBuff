@@ -7,11 +7,11 @@ https://github.com/seekey13/CrystalBuff
 This addon is designed for Ashita v4 and the CatsEyeXI private server.
 ]]
 
-addon.name      = 'CrystalBuff';
-addon.author    = 'Seekey';
-addon.version   = '1.5';
-addon.desc      = 'Tracks and corrects crystal buff (Signet, Sanction, Sigil) based on current zone.';
-addon.link      = 'https://github.com/seekey13/CrystalBuff';
+addon.name      = 'CrystalBuff'
+addon.author    = 'Seekey'
+addon.version   = '1.5'
+addon.desc      = 'Tracks and corrects crystal buff (Signet, Sanction, Sigil) based on current zone.'
+addon.link      = 'https://github.com/seekey13/CrystalBuff'
 
 require('common');
 local chat = require('chat')
@@ -42,7 +42,7 @@ end
 -- Safe pcall wrapper: returns value on success, nil on error.
 local function safe_call(fn)
     local ok, result = pcall(fn)
-    return (ok and result) or nil
+    if ok then return result end
 end
 
 -- GetEventSystemActive Code From Thorny
@@ -61,7 +61,6 @@ end
 
 -- Returns true if the player data has not finished loading yet.
 local function is_loading(player)
-    if not player then return true end
     local level = player:GetMainJobLevel()
     return not level or level == 0
 end
@@ -99,11 +98,13 @@ local function get_current_buff(buffs)
     end
 end
 
--- Returns true if the buff arrays differ.
+-- Returns true if the buff arrays differ (order-insensitive).
 local function buffs_changed(new, old)
     if #new ~= #old then return true end
-    for i = 1, #new do
-        if new[i] ~= old[i] then return true end
+    local set = {}
+    for _, v in ipairs(old) do set[v] = true end
+    for _, v in ipairs(new) do
+        if not set[v] then return true end
     end
     return false
 end
@@ -142,9 +143,7 @@ local function check_and_correct_buff()
     end
 end
 
-ashita.events.register('d3d_present', 'cb_present', function()
-    check_and_correct_buff()
-end)
+ashita.events.register('d3d_present', 'cb_present', check_and_correct_buff)
 
 ashita.events.register('load', 'cb_load', function()
     pending_buff_check = true

@@ -50,16 +50,10 @@ local sigil_zones = {
 }
 
 -- Initialize the lookup table
-for _, zone_id in ipairs(signet_zones) do
-    buff_map[zone_id] = "Signet"
-end
-
-for _, zone_id in ipairs(sanction_zones) do
-    buff_map[zone_id] = "Sanction"
-end
-
-for _, zone_id in ipairs(sigil_zones) do
-    buff_map[zone_id] = "Sigil"
+for buff_name, zones in pairs({ Signet = signet_zones, Sanction = sanction_zones, Sigil = sigil_zones }) do
+    for _, zone_id in ipairs(zones) do
+        buff_map[zone_id] = buff_name
+    end
 end
 
 for _, zone_id in ipairs(non_combat_zone_ids) do
