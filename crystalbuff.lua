@@ -120,12 +120,12 @@ local function get_zone_name(zone_id)
     return (ok and name) or ('Unknown Zone [' .. tostring(zone_id) .. ']')
 end
 
--- Finds the first matching tracked buff name in player's buffs.
+-- Finds the command for the first matching tracked buff in player's buffs.
 local function get_current_buff(buffs)
     if not buffs then return nil end
     for _, buff_id in ipairs(buffs) do
-        for name, entry in pairs(tracked_buffs) do
-            if entry.id == buff_id then return name end
+        for _, entry in pairs(tracked_buffs) do
+            if entry.id == buff_id then return entry.command end
         end
     end
 end
@@ -161,11 +161,10 @@ local function check_and_correct_buff()
     local required_buff = zone_buffs.get_zone_buff(zone_id)
     if not required_buff then return end
 
-    local found_buff = get_current_buff(buffs)
-    if found_buff ~= required_buff then
-        local cmd = tracked_buffs[required_buff].command
-        printf('Mismatch detected, issuing command: %s', cmd)
-        queue_command(cmd)
+    local required_cmd = tracked_buffs[required_buff].command
+    if get_current_buff(buffs) ~= required_cmd then
+        printf('Mismatch detected, issuing command: %s', required_cmd)
+        queue_command(required_cmd)
     end
 end
 
