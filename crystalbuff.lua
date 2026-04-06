@@ -22,12 +22,9 @@ local function printf(fmt, ...)  print(chat.header(addon.name) .. chat.message(f
 local function warnf(fmt, ...)   print(chat.header(addon.name) .. chat.warning(fmt:format(...))) end
 local function errorf(fmt, ...)  print(chat.header(addon.name) .. chat.error  (fmt:format(...))) end
 
-local last_zone = nil
 local last_buffs = {}
-local last_command_time = 0
-local pending_buff_check = false -- Defers post-zone buff check until buff data is populated
-local COMMAND_COOLDOWN = 10 -- seconds; rate limit for issuing correction commands
-local debug_mode = false -- Toggle for debug output
+local pending_buff_check = false
+local debug_mode = false
 
 -- Buff array constants
 local MAX_BUFF_SLOTS = 31 -- Maximum buff slot index (0-31)
@@ -35,7 +32,6 @@ local INVALID_BUFF_ID = 255 -- Invalid/empty buff slot marker
 
 -- Packet ID constants
 local PKT_ZONE_IN = 0x0A -- Zone in packet
-local PKT_BUFF_UPDATE = 0x037 -- Buff update packet
 
 -- Buff IDs mapped to name and correction command (single source of truth).
 local tracked_buffs = {
@@ -48,7 +44,7 @@ for _, v in pairs(tracked_buffs) do buff_commands[v.name] = v.command end
 
 -- GetEventSystemActive Code From Thorny
 local pEventSystem = ashita.memory.find('FFXiMain.dll', 0, "A0????????84C0741AA1????????85C0741166A1????????663B05????????0F94C0C3", 0, 0);
-local function get_event_system_active()
+local function is_event_system_active()
     if (pEventSystem == 0) then
         return false;
     end
@@ -58,6 +54,25 @@ local function get_event_system_active()
     end
 
     return (ashita.memory.read_uint8(ptr) == 1);
+end
+
+-- Returns the player object.
+local function get_player()
+    local ok, player = pcall(function()
+        return AshitaCore:GetMemoryManager():GetPlayer()
+    end)
+    if not ok or not player then
+        return nil
+    end
+    return player
+end
+
+-- Returns true if the player data has not finished loading yet.
+local function is_loading()
+    local player = get_player()
+    if not player then return true end
+    local level = player:GetMainJobLevel()
+    return not level or level == 0
 end
 
 -- Returns the current zone ID.
@@ -70,17 +85,6 @@ local function get_zone()
         return nil
     end
     return zone_id
-end
-
--- Returns the player object.
-local function get_player()
-    local ok, player = pcall(function()
-        return AshitaCore:GetMemoryManager():GetPlayer()
-    end)
-    if not ok or not player then
-        return nil
-    end
-    return player
 end
 
 -- Queues a command to be executed by the chat manager.
@@ -142,106 +146,55 @@ local function buffs_changed(new, old)
     return false
 end
 
--- Returns true if the player data has not finished loading yet.
-local function is_loading()
-    local player = get_player()
-    if not player then return true end
-    local level = player:GetMainJobLevel()
-    return not level or level == 0
-end
+-- Main loop: checks and corrects buff when pending or buffs changed.
+local function check_and_correct_buff()
+    if is_loading() then return end
+    if is_event_system_active() then return end
 
--- Main logic: prints status and issues a buff command if needed.
-local function check_and_correct_buff_status()
-    local zone_id = get_zone()
-    if not zone_id then
-        return
+    local buffs = get_buffs()
+    if buffs and buffs_changed(buffs, last_buffs) then
+        last_buffs = buffs
+        pending_buff_check = true
     end
 
-    local zone_name = get_zone_name(zone_id)
+    if not pending_buff_check then return end
 
-    -- Skip non-combat zones
+    local zone_id = get_zone()
+    if not zone_id then return end
+
     if zone_buffs.non_combat_zones[zone_id] then
-        if debug_mode then
-            printf('Zone "%s" (%u) is a non-combat/city zone. No buff check needed.', zone_name, zone_id)
-        end
+        pending_buff_check = false
         return
     end
 
     local required_buff = zone_buffs.get_zone_buff(zone_id)
-
-    -- Skip zones that don't require a buff
     if not required_buff then
-        if debug_mode then
-            printf('Zone "%s" (%u) requires no crystal buff.', zone_name, zone_id)
-        end
+        pending_buff_check = false
         return
     end
 
-    if debug_mode then
-        printf('Current Zone: %s (%u)', zone_name, zone_id)
-        printf('Required Buff: %s', required_buff)
-    end
-
-    local buffs = get_buffs()
-    if not buffs then return end
-
     local found_buff = get_current_buff(buffs)
-    if debug_mode then
-        printf('Current Crystal Buff: %s', found_buff or 'None')
-    end
-
-    if found_buff ~= required_buff then
-        local now = os.time()
-        if (now - last_command_time) >= COMMAND_COOLDOWN then
-            if get_event_system_active() then
-                if debug_mode then warnf('Event system is active, skipping command.') end
-                return
-            end
-            local cmd = buff_commands[required_buff]
-            printf('Mismatch detected, issuing command: %s', cmd)
-            queue_command(cmd)
-            last_command_time = now
-        else
-            local remaining = COMMAND_COOLDOWN - (now - last_command_time)
-            warnf('Command cooldown in effect, %d seconds remaining.', remaining)
-        end
+    if found_buff == required_buff then
+        pending_buff_check = false
+    else
+        local cmd = buff_commands[required_buff]
+        printf('Mismatch detected, issuing command: %s', cmd)
+        queue_command(cmd)
+        pending_buff_check = false
     end
 end
 
--- On addon load, check status immediately (handles user loading without buff or with wrong buff).
+ashita.events.register('d3d_present', 'cb_present', function()
+    check_and_correct_buff()
+end)
+
 ashita.events.register('load', 'cb_load', function()
-    if is_loading() then return end
-    last_buffs = get_buffs() or {}
-    last_zone = get_zone()
-    check_and_correct_buff_status()
+    pending_buff_check = true
 end)
 
 ashita.events.register('packet_in', 'cb_packet_in', function(e)
     if e.id == PKT_ZONE_IN then
-        local moghouse = struct.unpack('b', e.data, 0x80 + 1)
-        if moghouse ~= 1 then
-            -- Always clear buffs and flag a pending check so PKT_BUFF_UPDATE
-            -- triggers the check once loading finishes, even if is_loading()
-            -- is true right now (level is 0 mid-transition).
-            last_buffs = {}
-            pending_buff_check = true
-            if not is_loading() then
-                local zone_id = get_zone()
-                if zone_id then
-                    last_zone = zone_id
-                end
-            end
-        end
-    elseif e.id == PKT_BUFF_UPDATE then
-        local buffs = get_buffs()
-        if not buffs then return end
-        if buffs_changed(buffs, last_buffs) or pending_buff_check then
-            pending_buff_check = false
-            last_buffs = buffs
-            if not is_loading() then
-                check_and_correct_buff_status()
-            end
-        end
+        pending_buff_check = true
     end
 end)
 
