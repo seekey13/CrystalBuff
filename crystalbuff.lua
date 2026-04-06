@@ -9,7 +9,7 @@ This addon is designed for Ashita v4 and the CatsEyeXI private server.
 
 addon.name      = 'CrystalBuff';
 addon.author    = 'Seekey';
-addon.version   = '1.4';
+addon.version   = '1.5';
 addon.desc      = 'Tracks and corrects crystal buff (Signet, Sanction, Sigil) based on current zone.';
 addon.link      = 'https://github.com/seekey13/CrystalBuff';
 
@@ -220,18 +220,17 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
     if e.id == PKT_ZONE_IN then
         local moghouse = struct.unpack('b', e.data, 0x80 + 1)
         if moghouse ~= 1 then
-            if is_loading() then
-                return
-            end
-            -- Update zone now but defer buff check until PKT_BUFF_UPDATE delivers
-            -- the new zone's buff data. Checking here causes false mismatches because
-            -- the buff array is stale/empty immediately after zoning.
-            local zone_id = get_zone()
-            if zone_id then
-                last_zone = zone_id
-            end
+            -- Always clear buffs and flag a pending check so PKT_BUFF_UPDATE
+            -- triggers the check once loading finishes, even if is_loading()
+            -- is true right now (level is 0 mid-transition).
             last_buffs = {}
             pending_buff_check = true
+            if not is_loading() then
+                local zone_id = get_zone()
+                if zone_id then
+                    last_zone = zone_id
+                end
+            end
         end
     elseif e.id == PKT_BUFF_UPDATE then
         local buffs = get_buffs()
