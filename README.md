@@ -10,12 +10,10 @@ CrystalBuff is an Ashita v4 addon for Final Fantasy XI that automatically tracks
 ## Features
 
 - **Automatic Detection:** Monitors your active buffs and determines which crystal buff (Signet, Sanction, or Sigil) is required for your current zone.
-- **Buff Correction:** If you are missing the required buff for your zone, CrystalBuff will automatically attempt to apply the correct one by issuing the appropriate command.
+- **Buff Correction:** If you are missing the required buff for your zone, CrystalBuff will automatically issue the appropriate command to correct it.
 - **Zone Awareness:** Recognizes the zones where each buff is needed—Signet (vanilla zones), Sanction (ToAU zones), Sigil (past zones)—and adapts as you move.
 - **Smart Filtering:** Automatically ignores city zones, non-combat areas, and other safe zones where crystal buffs are not needed.
-- **Command Cooldown:** Built-in 10-second cooldown prevents spam and conflicts with other addons.
-- **Intelligent Delays:** Uses strategic delays to ensure buff data is fully updated before making corrections.
-- **Debug Mode:** Optional verbose output for troubleshooting and monitoring addon behavior.
+- **Event System Awareness:** Skips corrections during cutscenes and scripted events to avoid interruption.
 - **Minimal Setup:** No configuration required. Just load the addon and let it keep your crystal buff up-to-date.
 
 
@@ -45,14 +43,14 @@ CrystalBuff runs automatically in the background. When you change zones or your 
 
 ### Intelligent Behavior
 - **Safe Zone Detection:** Automatically ignores cities, towns, and other non-combat areas where buffs aren't needed
-- **Rate Limiting:** Uses a 10-second cooldown between correction commands to prevent server command spam
-- **Timing Optimization:** Employs strategic delays to ensure buff data is fully updated before making decisions
-- **Error Resilience:** Robust error handling prevents crashes and provides helpful feedback
+- **Event System Detection:** Pauses during cutscenes and events to avoid interfering with scripted content
+- **Buff Change Monitoring:** Detects buff list changes and re-evaluates requirements whenever your buffs update
 
 ### When Corrections Happen
 - If you have no crystal buff in a combat zone
 - If you have the wrong crystal buff for your current zone (e.g., Signet in a ToAU zone)
 - After zoning into a new area that requires a different buff
+- Whenever your buff list changes
 
 
 ## Supported Buffs
@@ -65,35 +63,11 @@ CrystalBuff runs automatically in the background. When you change zones or your 
 
 ## Output
 
-By default, CrystalBuff runs silently in the background with minimal output.
+CrystalBuff runs silently in the background. The only output you will see is a notification when a buff mismatch is detected and corrected:
 
-### Debug Mode
-Enable detailed output with:
-```
-/crystalbuff debug
-```
-
-When debug mode is enabled, you'll see detailed information about:
-- Current zone name and ID
-- Required buff for the zone  
-- Your current crystal buff status
-- Buff correction actions
-
-### Additional Commands
-```
-/crystalbuff zoneid
-```
-Displays your current zone name and ID for troubleshooting purposes.
-
-> **Example Debug Output:**  
-> [CrystalBuff] Current Zone: East Ronfaure (101)  
-> [CrystalBuff] Required Buff: Signet  
-> [CrystalBuff] Current Crystal Buff: None  
 > [CrystalBuff] Mismatch detected, issuing command: !signet
 
-### Available Commands
-- `/crystalbuff debug` - Toggle debug mode on/off
-- `/crystalbuff zoneid` - Show current zone name and ID
+No commands or configuration are required.
 
 
 ## Compatibility
@@ -127,7 +101,14 @@ Completely unnecessary AI generated image
 
 ## Changelog
 
-### Version 1.4 (Current)
+### Version 1.5 (Current)
+- Removed debug mode and all user-facing commands for a simpler, zero-config experience
+- Removed cooldown system and startup/zone-in delays in favor of reactive buff-change detection
+- Checks now trigger immediately on buff list changes rather than on fixed timers
+- Retains event system detection to skip corrections during cutscenes and events
+- Significant code simplification and cleanup
+
+### Version 1.4
 - Added event system detection to prevent commands during cutscenes/events
 - Implemented 10-second startup delay after addon load for data initialization
 - Implemented 10-second delay after zone-in before buff checks begin
