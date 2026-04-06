@@ -150,14 +150,6 @@ local function is_loading()
     return not level or level == 0
 end
 
--- Returns true if the world is ready (not zoning and player entity exists).
-local function is_world_ready()
-    local player = get_player()
-    if not player then return false end
-    local entity = GetPlayerEntity and GetPlayerEntity()
-    return not player.isZoning and entity ~= nil
-end
-
 -- Main logic: prints status and issues a buff command if needed.
 local function check_and_correct_buff_status()
     local zone_id = get_zone()
@@ -247,7 +239,7 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
         if buffs_changed(buffs, last_buffs) or pending_buff_check then
             pending_buff_check = false
             last_buffs = buffs
-            if is_world_ready() then
+            if not is_loading() then
                 check_and_correct_buff_status()
             end
         end
