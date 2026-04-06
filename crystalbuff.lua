@@ -7,94 +7,110 @@ https://github.com/seekey13/CrystalBuff
 This addon is designed for Ashita v4 and the CatsEyeXI private server.
 ]]
 
-addon.name      = 'CrystalBuff';
-addon.author    = 'Seekey';
-addon.version   = '1.4';
-addon.desc      = 'Tracks and corrects crystal buff (Signet, Sanction, Sigil) based on current zone.';
-addon.link      = 'https://github.com/seekey13/CrystalBuff';
+addon.name      = 'CrystalBuff'
+addon.author    = 'Seekey'
+addon.version   = '1.5'
+addon.desc      = 'Tracks and corrects crystal buff (Signet, Sanction, Sigil) based on current zone.'
+addon.link      = 'https://github.com/seekey13/CrystalBuff'
 
-require('common');
+require('common')
 local chat = require('chat')
-local zone_buffs = require('zone_buffs');
 
--- Custom print functions for categorized output.
-local function printf(fmt, ...)  print(chat.header(addon.name) .. chat.message(fmt:format(...))) end
-local function warnf(fmt, ...)   print(chat.header(addon.name) .. chat.warning(fmt:format(...))) end
-local function errorf(fmt, ...)  print(chat.header(addon.name) .. chat.error  (fmt:format(...))) end
+-- Zone data: maps zone IDs to required buff type, and marks non-combat zones.
+local buff_map = {}
+local non_combat_zones = {}
 
-local last_zone = nil
+local non_combat_zone_ids = {
+    230, 231, 232, 233,          -- San d'Oria
+    234, 235, 236, 237,          -- Bastok
+    238, 239, 240, 241, 242,     -- Windurst
+    243, 244, 245, 246,          -- Jeuno
+    80, 87, 94,                  -- WotG Cities (San d'Oria [S], Bastok [S], Windurst [S])
+    48, 50, 53,                  -- Aht Urhgan cities/towns (Al Zahbi, Whitegate, Nashmau)
+    26, 247, 248, 249, 250, 252, -- Other Towns (Tavnazian Safehold, Rabao, Selbina, Mhaura, Kazham, Norg)
+    256, 257,                    -- Adoulin
+    280,                         -- Mog Garden
+    46, 47,                      -- Open sea routes
+    220, 221,                    -- Ships bound for Selbina/Mhaura
+    223, 224, 225, 226,          -- Airships
+    227, 228,                    -- Ships with Pirates (still safe zones)
+    70,                          -- Chocobo Circuit
+    251,                         -- Hall of the Gods
+    284,                         -- Celennia Memorial Library
+}
+
+-- Signet zones (Original FFXI, Rise of the Zilart, Chains of Promathia)
+local signet_zones = {
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 134, 135, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 157, 158, 159, 160, 161, 162, 163, 165, 166, 167, 168, 169, 170, 172, 173, 174, 176, 177, 178, 179, 180, 181, 184, 185, 186, 187, 188, 190, 191, 192, 193, 194, 195, 196, 197, 198, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 211, 212, 213
+}
+
+-- Sanction zones (Treasures of Aht Urhgan)
+local sanction_zones = {
+    51, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 72, 73, 74, 75, 76, 77, 78, 79
+}
+
+-- Sigil zones (Wings of the Goddess)
+local sigil_zones = {
+    81, 82, 83, 84, 85, 86, 88, 89, 90, 91, 92, 93, 95, 96, 97, 98, 99, 136, 137, 138, 155, 156, 164, 171, 175, 182, 279, 298
+}
+
+for buff_name, zones in pairs({ Signet = signet_zones, Sanction = sanction_zones, Sigil = sigil_zones }) do
+    for _, zone_id in ipairs(zones) do buff_map[zone_id] = buff_name end
+end
+
+for _, zone_id in ipairs(non_combat_zone_ids) do non_combat_zones[zone_id] = true end
 local last_buffs = {}
-local last_command_time = 0
-local pending_buff_check = false -- Defers post-zone buff check until buff data is populated
-local COMMAND_COOLDOWN = 10 -- seconds; rate limit for issuing correction commands
-local debug_mode = false -- Toggle for debug output
+local pending_buff_check = false
+local last_check_time = 0
 
--- Buff array constants
-local MAX_BUFF_SLOTS = 31 -- Maximum buff slot index (0-31)
-local INVALID_BUFF_ID = 255 -- Invalid/empty buff slot marker
+-- Constants
+local MAX_BUFF_SLOTS  = 31    -- Maximum buff slot index (0-31)
+local INVALID_BUFF_ID = 255   -- Invalid/empty buff slot marker
+local PKT_ZONE_IN     = 0x0A  -- Zone in packet
+local CHECK_INTERVAL  = 1.0   -- Seconds between tick evaluations
 
--- Packet ID constants
-local PKT_ZONE_IN = 0x0A -- Zone in packet
-local PKT_BUFF_UPDATE = 0x037 -- Buff update packet
-
--- Buff IDs for Signet, Sanction, and Sigil.
+-- Buff names mapped to ID and correction command (single source of truth).
 local tracked_buffs = {
-    [253] = 'Signet',
-    [256] = 'Sanction',
-    [268] = 'Sigil'
+    Signet   = { id = 253, command = '!signet'   },
+    Sanction = { id = 256, command = '!sanction' },
+    Sigil    = { id = 268, command = '!sigil'    },
 }
 
--- Chat command mapping for each buff type.
-local required_buff_commands = {
-    ['Signet'] = '!signet',
-    ['Sanction'] = '!sanction',
-    ['Sigil'] = '!sigil'
-}
+-- Reverse lookup: buff ID -> command (built once at load).
+local buff_id_to_command = {}
+for _, entry in pairs(tracked_buffs) do
+    buff_id_to_command[entry.id] = entry.command
+end
+
+-- Safe pcall wrapper: returns value on success, nil on error.
+local function safe_call(fn)
+    local ok, result = pcall(fn)
+    if ok then return result end
+end
 
 -- GetEventSystemActive Code From Thorny
 local pEventSystem = ashita.memory.find('FFXiMain.dll', 0, "A0????????84C0741AA1????????85C0741166A1????????663B05????????0F94C0C3", 0, 0);
-local function get_event_system_active()
-    if (pEventSystem == 0) then
-        return false;
-    end
-    local ptr = ashita.memory.read_uint32(pEventSystem + 1);
-    if (ptr == 0) then
-        return false;
-    end
-
-    return (ashita.memory.read_uint8(ptr) == 1);
+local function is_event_system_active()
+    if pEventSystem == 0 then return false end
+    local ptr = ashita.memory.read_uint32(pEventSystem + 1)
+    if ptr == 0 then return false end
+    return ashita.memory.read_uint8(ptr) == 1
 end
 
---[[
-get_required_buff:
-Uses zone_buffs.lua to determine the required buff for a zone.
-Returns the buff type (Signet, Sanction, Sigil) or nil for zones that should be ignored.
-]]
-local function get_required_buff(zone_id)
-    return zone_buffs.get_zone_buff(zone_id)
+-- Returns the player object, or nil if unavailable.
+local function get_player()
+    return safe_call(function() return AshitaCore:GetMemoryManager():GetPlayer() end)
+end
+
+-- Returns true if the player data has not finished loading yet.
+local function is_loading(player)
+    local level = player:GetMainJobLevel()
+    return not level or level == 0
 end
 
 -- Returns the current zone ID.
 local function get_zone()
-    local ok, zone_id = pcall(function()
-        return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0)
-    end)
-    if not ok then
-        errorf('Error: Failed to get current zone.')
-        return nil
-    end
-    return zone_id
-end
-
--- Returns the player object.
-local function get_player()
-    local ok, player = pcall(function()
-        return AshitaCore:GetMemoryManager():GetPlayer()
-    end)
-    if not ok or not player then
-        return nil
-    end
-    return player
+    return safe_call(function() return AshitaCore:GetMemoryManager():GetParty():GetMemberZone(0) end)
 end
 
 -- Queues a command to be executed by the chat manager.
@@ -103,21 +119,10 @@ local function queue_command(cmd)
 end
 
 -- Returns the player's current buffs as a filtered table.
-local function get_buffs()
-    local player = get_player()
-    if not player then
-        return nil
-    end
-    
-    local ok_buffs, buffs = pcall(function()
-        return player:GetBuffs()
-    end)
-    
-    if not ok_buffs or not buffs then
-        return nil
-    end
-    
-    -- Filter out invalid buffs (ID 255 or 0) and convert to table
+local function get_buffs(player)
+    local buffs = safe_call(function() return player:GetBuffs() end)
+    if not buffs then return nil end
+
     local valid_buffs = {}
     for i = 0, MAX_BUFF_SLOTS do
         local buff_id = buffs[i]
@@ -125,218 +130,70 @@ local function get_buffs()
             table.insert(valid_buffs, buff_id)
         end
     end
-    
     return valid_buffs
 end
 
--- Returns the Ashita resource name for the given zone_id.
-local function get_zone_name(zone_id)
-    local ok, name = pcall(function()
-        return AshitaCore:GetResourceManager():GetString('zones.names', zone_id)
-    end)
-    return (ok and name) or ('Unknown Zone [' .. tostring(zone_id) .. ']')
-end
-
--- Finds the first matching tracked buff in player's buffs.
+-- Finds the command for the first matching tracked buff in player's buffs.
 local function get_current_buff(buffs)
-    if not buffs then return nil end
     for _, buff_id in ipairs(buffs) do
-        if tracked_buffs[buff_id] then
-            return tracked_buffs[buff_id]
-        end
+        local cmd = buff_id_to_command[buff_id]
+        if cmd then return cmd end
     end
-    return nil
 end
 
--- Returns true if the buff arrays differ.
+-- Returns true if the buff arrays differ (order-insensitive).
 local function buffs_changed(new, old)
-    local new_buffs = new or {}
-    local old_buffs = old or {}
-    
-    if #new_buffs ~= #old_buffs then return true end
-    
-    for i = 1, #new_buffs do
-        if new_buffs[i] ~= old_buffs[i] then
-            return true
-        end
+    if #new ~= #old then return true end
+    local set = {}
+    for _, v in ipairs(old) do set[v] = true end
+    for _, v in ipairs(new) do
+        if not set[v] then return true end
     end
-    
     return false
 end
 
--- Returns true if the player data has not finished loading yet.
-local function is_loading()
-    local player = AshitaCore:GetMemoryManager():GetPlayer()
-    if not player then return true end
-    local level = player:GetMainJobLevel()
-    return not level or level == 0
-end
+-- Main loop: throttled to once per second; checks and corrects buff when pending.
+local function check_and_correct_buff()
+    local now = os.clock()
+    if now - last_check_time < CHECK_INTERVAL then return end
+    last_check_time = now
 
--- Returns true if the world is ready (not zoning and player entity exists).
-local function is_world_ready()
     local player = get_player()
-    if not player then
-        return false
-    end
-    local entity = GetPlayerEntity and GetPlayerEntity()
-    return player and not player.isZoning and entity
-end
+    if is_loading(player) then return end
+    if is_event_system_active() then return end
 
--- Main logic: prints status and issues a buff command if needed.
-local function check_and_correct_buff_status()
+    local buffs = get_buffs(player)
+    if buffs and buffs_changed(buffs, last_buffs) then
+        last_buffs = buffs
+        pending_buff_check = true
+    end
+
+    if not pending_buff_check or not buffs then return end
+    pending_buff_check = false
+
     local zone_id = get_zone()
-    if not zone_id then
-        return
-    end
+    if not zone_id then return end
 
-    local zone_name = get_zone_name(zone_id)
+    if non_combat_zones[zone_id] then return end
 
-    -- Skip non-combat zones
-    if zone_buffs.non_combat_zones[zone_id] then
-        if debug_mode then
-            printf('Zone "%s" (%u) is a non-combat/city zone. No buff check needed.', zone_name, zone_id)
-        end
-        return
-    end
+    local required_buff = buff_map[zone_id]
+    if not required_buff then return end
 
-    local required_buff = get_required_buff(zone_id)
-    
-    -- Skip zones that don't require a buff
-    if not required_buff then
-        if debug_mode then
-            printf('Zone "%s" (%u) requires no crystal buff.', zone_name, zone_id)
-        end
-        return
-    end
-
-    if debug_mode then
-        printf('Current Zone: %s (%u)', zone_name, zone_id)
-        printf('Required Buff: %s', required_buff)
-    end
-
-    local buffs = get_buffs()
-    if not buffs then
-        return
-    end
-
-    local found_buff = get_current_buff(buffs)
-    if debug_mode then
-        printf('Current Crystal Buff: %s', found_buff or 'None')
-    end
-
-    if required_buff_commands[required_buff] and found_buff ~= required_buff then
-        local now = os.time()
-        if (now - last_command_time) >= COMMAND_COOLDOWN then
-            -- Check if event system is active before issuing command
-            if get_event_system_active() then
-                if debug_mode then
-                    warnf('Event system is active, skipping command.')
-                end
-                return
-            end
-            
-            local cmd = required_buff_commands[required_buff]
-            printf('Mismatch detected, issuing command: %s', cmd)
-            queue_command(cmd)
-            last_command_time = now
-        else
-            local remaining = COMMAND_COOLDOWN - (now - last_command_time)
-            warnf('Command cooldown in effect, %d seconds remaining.', remaining)
-        end
+    local required_cmd = tracked_buffs[required_buff].command
+    if get_current_buff(buffs) ~= required_cmd then
+        print(chat.header(addon.name) .. chat.message(('Mismatch detected, issuing command: %s'):format(required_cmd)))
+        queue_command(required_cmd)
     end
 end
 
--- Updates last_zone and triggers buff check.
-local function update_zone_and_check()
-    local zone_id = get_zone()
-    if not zone_id then
-        return false
-    end
-    if zone_id ~= last_zone then
-        last_zone = zone_id
-    end
-    check_and_correct_buff_status()
-    return true
-end
+ashita.events.register('d3d_present', 'cb_present', check_and_correct_buff)
 
--- On addon load, check status immediately (handles user loading without buff or with wrong buff).
 ashita.events.register('load', 'cb_load', function()
-    if is_loading() then
-        return
-    end
-    local buffs = get_buffs()
-    last_buffs = buffs or {}
-    update_zone_and_check()
+    pending_buff_check = true
 end)
 
 ashita.events.register('packet_in', 'cb_packet_in', function(e)
     if e.id == PKT_ZONE_IN then
-        local moghouse = struct.unpack('b', e.data, 0x80 + 1)
-        if moghouse ~= 1 then
-            if is_loading() then
-                return
-            end
-            -- Update zone now but defer buff check until PKT_BUFF_UPDATE delivers
-            -- the new zone's buff data. Checking here causes false mismatches because
-            -- the buff array is stale/empty immediately after zoning.
-            local zone_id = get_zone()
-            if zone_id then
-                last_zone = zone_id
-            end
-            last_buffs = {}
-            pending_buff_check = true
-        end
-    elseif e.id == PKT_BUFF_UPDATE then
-        local buffs = get_buffs()
-        if not buffs then
-            return
-        end
-        if buffs_changed(buffs, last_buffs) or pending_buff_check then
-            pending_buff_check = false
-            last_buffs = buffs
-
-            local current_buff = get_current_buff(buffs)
-            local zone_id = get_zone()
-            if not zone_id then
-                return
-            end
-
-            -- Skip non-combat zones and zones without required buffs
-            if zone_buffs.non_combat_zones[zone_id] then
-                return
-            end
-
-            local required_buff = get_required_buff(zone_id)
-            if not required_buff then
-                return
-            end
-
-            if is_world_ready() and (not current_buff or current_buff ~= required_buff) then
-                check_and_correct_buff_status()
-            end
-        end
-    end
-end)
-
--- Command handler for debug toggle and info
-ashita.events.register('command', 'cb_command', function(e)
-    local args = e.command:args()
-    if #args == 0 or args[1]:lower() ~= '/crystalbuff' then return end
-    
-    e.blocked = true
-    
-    if #args >= 2 and args[2]:lower() == 'debug' then
-        debug_mode = not debug_mode
-        printf('Debug mode %s', debug_mode and 'enabled' or 'disabled')
-    elseif #args >= 2 and args[2]:lower() == 'zoneid' then
-        local zone_id = get_zone()
-        if zone_id then
-            local zone_name = get_zone_name(zone_id)
-            printf('Current Zone: %s (%u)', zone_name, zone_id)
-        end
-    else
-        printf('Commands:')
-        printf('  /crystalbuff debug  - Toggle debug output')
-        printf('  /crystalbuff zoneid - Print current zone name and ID')
+        pending_buff_check = true
     end
 end)
