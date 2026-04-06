@@ -24,7 +24,6 @@ local function errorf(fmt, ...)  print(chat.header(addon.name) .. chat.error  (f
 
 local last_buffs = {}
 local pending_buff_check = false
-local debug_mode = false
 
 -- Buff array constants
 local MAX_BUFF_SLOTS = 31 -- Maximum buff slot index (0-31)
@@ -195,28 +194,5 @@ end)
 ashita.events.register('packet_in', 'cb_packet_in', function(e)
     if e.id == PKT_ZONE_IN then
         pending_buff_check = true
-    end
-end)
-
--- Command handler for debug toggle and info
-ashita.events.register('command', 'cb_command', function(e)
-    local args = e.command:args()
-    if #args == 0 or args[1]:lower() ~= '/crystalbuff' then return end
-    
-    e.blocked = true
-    
-    if #args >= 2 and args[2]:lower() == 'debug' then
-        debug_mode = not debug_mode
-        printf('Debug mode %s', debug_mode and 'enabled' or 'disabled')
-    elseif #args >= 2 and args[2]:lower() == 'zoneid' then
-        local zone_id = get_zone()
-        if zone_id then
-            local zone_name = get_zone_name(zone_id)
-            printf('Current Zone: %s (%u)', zone_name, zone_id)
-        end
-    else
-        printf('Commands:')
-        printf('  /crystalbuff debug  - Toggle debug output')
-        printf('  /crystalbuff zoneid - Print current zone name and ID')
     end
 end)
