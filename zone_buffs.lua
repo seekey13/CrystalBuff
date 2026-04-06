@@ -9,7 +9,7 @@
 
 --]]
 
-local zone_buffs = {}
+local buff_map = {}
 local non_combat_zones = {}
 
 local non_combat_zone_ids = {
@@ -33,11 +33,10 @@ local non_combat_zone_ids = {
 
 -- Signet zones (Original FFXI, Rise of the Zilart, Chains of Promathia)
 local signet_zones = {
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
     100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131,
     134, 135, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 157, 158, 159, 160, 161, 162, 163, 165, 166, 167, 168, 169, 170,
-    172, 173, 174, 176, 177, 178, 179, 180, 181, 184, 185, 186, 187, 188, 190, 191, 192, 193, 194, 195, 196, 197, 198, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 211, 212, 213,
-    220, 221, 223, 224, 225, 226, 227, 228, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252
+    172, 173, 174, 176, 177, 178, 179, 180, 181, 184, 185, 186, 187, 188, 190, 191, 192, 193, 194, 195, 196, 197, 198, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 211, 212, 213
 }
 
 -- Sanction zones (Treasures of Aht Urhgan)
@@ -52,27 +51,22 @@ local sigil_zones = {
 
 -- Initialize the lookup table
 for _, zone_id in ipairs(signet_zones) do
-    zone_buffs[zone_id] = "Signet"
+    buff_map[zone_id] = "Signet"
 end
 
 for _, zone_id in ipairs(sanction_zones) do
-    zone_buffs[zone_id] = "Sanction"
+    buff_map[zone_id] = "Sanction"
 end
 
 for _, zone_id in ipairs(sigil_zones) do
-    zone_buffs[zone_id] = "Sigil"
+    buff_map[zone_id] = "Sigil"
 end
 
 for _, zone_id in ipairs(non_combat_zone_ids) do
     non_combat_zones[zone_id] = true
 end
 
-local function get_zone_buff(zone_id)
-    return zone_buffs[zone_id]
-end
-
 return {
-    get_zone_buff    = get_zone_buff,
-    zone_buffs       = zone_buffs,
+    buff_map         = buff_map,
     non_combat_zones = non_combat_zones,
 }

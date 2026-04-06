@@ -158,7 +158,7 @@ local function check_and_correct_buff()
 
     if zone_buffs.non_combat_zones[zone_id] then return end
 
-    local required_buff = zone_buffs.get_zone_buff(zone_id)
+    local required_buff = zone_buffs.buff_map[zone_id]
     if not required_buff then return end
 
     local required_cmd = tracked_buffs[required_buff].command
