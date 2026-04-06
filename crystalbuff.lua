@@ -25,6 +25,7 @@ local function errorf(fmt, ...)  print(chat.header(addon.name) .. chat.error  (f
 local last_zone = nil
 local last_buffs = {}
 local last_command_time = 0
+local pending_buff_check = false -- Defers post-zone buff check until buff data is populated
 local COMMAND_COOLDOWN = 10 -- seconds; rate limit for issuing correction commands
 local debug_mode = false -- Toggle for debug output
 
@@ -275,14 +276,23 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
             if is_loading() then
                 return
             end
-            update_zone_and_check()
+            -- Update zone now but defer buff check until PKT_BUFF_UPDATE delivers
+            -- the new zone's buff data. Checking here causes false mismatches because
+            -- the buff array is stale/empty immediately after zoning.
+            local zone_id = get_zone()
+            if zone_id then
+                last_zone = zone_id
+            end
+            last_buffs = {}
+            pending_buff_check = true
         end
     elseif e.id == PKT_BUFF_UPDATE then
         local buffs = get_buffs()
         if not buffs then
             return
         end
-        if buffs_changed(buffs, last_buffs) then
+        if buffs_changed(buffs, last_buffs) or pending_buff_check then
+            pending_buff_check = false
             last_buffs = buffs
 
             local current_buff = get_current_buff(buffs)
