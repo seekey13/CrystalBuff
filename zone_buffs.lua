@@ -67,39 +67,12 @@ for _, zone_id in ipairs(non_combat_zone_ids) do
     non_combat_zones[zone_id] = true
 end
 
--- Function to get the buff type for a given zone ID (returns nil for ignored zones)
-function get_zone_buff(zone_id)
+local function get_zone_buff(zone_id)
     return zone_buffs[zone_id]
 end
 
--- Function to check if a zone has buff tracking (not ignored)
-function zone_has_buff(zone_id)
-    return zone_buffs[zone_id] ~= nil
-end
-
--- Function to check if a zone supports a specific buff
-function zone_supports(zone_id, buff_type)
-    return get_zone_buff(zone_id) == buff_type
-end
-
--- Function to get all zones that support a specific buff type
-function get_zones_by_buff(buff_type)
-    local zones = {}
-    for zone_id, buff in pairs(zone_buffs) do
-        if buff == buff_type then
-            table.insert(zones, zone_id)
-        end
-    end
-    table.sort(zones)
-    return zones
-end
-
--- Export the module
 return {
-    get_zone_buff = get_zone_buff,
-    zone_has_buff = zone_has_buff,
-    zone_supports = zone_supports,
-    get_zones_by_buff = get_zones_by_buff,
-    zone_buffs = zone_buffs,
-    non_combat_zones = non_combat_zones
+    get_zone_buff    = get_zone_buff,
+    zone_buffs       = zone_buffs,
+    non_combat_zones = non_combat_zones,
 }

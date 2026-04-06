@@ -37,19 +37,14 @@ local INVALID_BUFF_ID = 255 -- Invalid/empty buff slot marker
 local PKT_ZONE_IN = 0x0A -- Zone in packet
 local PKT_BUFF_UPDATE = 0x037 -- Buff update packet
 
--- Buff IDs for Signet, Sanction, and Sigil.
+-- Buff IDs mapped to name and correction command (single source of truth).
 local tracked_buffs = {
-    [253] = 'Signet',
-    [256] = 'Sanction',
-    [268] = 'Sigil'
+    [253] = { name = 'Signet',   command = '!signet'   },
+    [256] = { name = 'Sanction', command = '!sanction' },
+    [268] = { name = 'Sigil',    command = '!sigil'    },
 }
-
--- Chat command mapping for each buff type.
-local required_buff_commands = {
-    ['Signet'] = '!signet',
-    ['Sanction'] = '!sanction',
-    ['Sigil'] = '!sigil'
-}
+local buff_commands = {}
+for _, v in pairs(tracked_buffs) do buff_commands[v.name] = v.command end
 
 -- GetEventSystemActive Code From Thorny
 local pEventSystem = ashita.memory.find('FFXiMain.dll', 0, "A0????????84C0741AA1????????85C0741166A1????????663B05????????0F94C0C3", 0, 0);
@@ -63,15 +58,6 @@ local function get_event_system_active()
     end
 
     return (ashita.memory.read_uint8(ptr) == 1);
-end
-
---[[
-get_required_buff:
-Uses zone_buffs.lua to determine the required buff for a zone.
-Returns the buff type (Signet, Sanction, Sigil) or nil for zones that should be ignored.
-]]
-local function get_required_buff(zone_id)
-    return zone_buffs.get_zone_buff(zone_id)
 end
 
 -- Returns the current zone ID.
@@ -142,31 +128,23 @@ local function get_current_buff(buffs)
     if not buffs then return nil end
     for _, buff_id in ipairs(buffs) do
         if tracked_buffs[buff_id] then
-            return tracked_buffs[buff_id]
+            return tracked_buffs[buff_id].name
         end
     end
-    return nil
 end
 
 -- Returns true if the buff arrays differ.
 local function buffs_changed(new, old)
-    local new_buffs = new or {}
-    local old_buffs = old or {}
-    
-    if #new_buffs ~= #old_buffs then return true end
-    
-    for i = 1, #new_buffs do
-        if new_buffs[i] ~= old_buffs[i] then
-            return true
-        end
+    if #new ~= #old then return true end
+    for i = 1, #new do
+        if new[i] ~= old[i] then return true end
     end
-    
     return false
 end
 
 -- Returns true if the player data has not finished loading yet.
 local function is_loading()
-    local player = AshitaCore:GetMemoryManager():GetPlayer()
+    local player = get_player()
     if not player then return true end
     local level = player:GetMainJobLevel()
     return not level or level == 0
@@ -175,11 +153,9 @@ end
 -- Returns true if the world is ready (not zoning and player entity exists).
 local function is_world_ready()
     local player = get_player()
-    if not player then
-        return false
-    end
+    if not player then return false end
     local entity = GetPlayerEntity and GetPlayerEntity()
-    return player and not player.isZoning and entity
+    return not player.isZoning and entity ~= nil
 end
 
 -- Main logic: prints status and issues a buff command if needed.
@@ -199,8 +175,8 @@ local function check_and_correct_buff_status()
         return
     end
 
-    local required_buff = get_required_buff(zone_id)
-    
+    local required_buff = zone_buffs.get_zone_buff(zone_id)
+
     -- Skip zones that don't require a buff
     if not required_buff then
         if debug_mode then
@@ -215,27 +191,21 @@ local function check_and_correct_buff_status()
     end
 
     local buffs = get_buffs()
-    if not buffs then
-        return
-    end
+    if not buffs then return end
 
     local found_buff = get_current_buff(buffs)
     if debug_mode then
         printf('Current Crystal Buff: %s', found_buff or 'None')
     end
 
-    if required_buff_commands[required_buff] and found_buff ~= required_buff then
+    if found_buff ~= required_buff then
         local now = os.time()
         if (now - last_command_time) >= COMMAND_COOLDOWN then
-            -- Check if event system is active before issuing command
             if get_event_system_active() then
-                if debug_mode then
-                    warnf('Event system is active, skipping command.')
-                end
+                if debug_mode then warnf('Event system is active, skipping command.') end
                 return
             end
-            
-            local cmd = required_buff_commands[required_buff]
+            local cmd = buff_commands[required_buff]
             printf('Mismatch detected, issuing command: %s', cmd)
             queue_command(cmd)
             last_command_time = now
@@ -246,27 +216,12 @@ local function check_and_correct_buff_status()
     end
 end
 
--- Updates last_zone and triggers buff check.
-local function update_zone_and_check()
-    local zone_id = get_zone()
-    if not zone_id then
-        return false
-    end
-    if zone_id ~= last_zone then
-        last_zone = zone_id
-    end
-    check_and_correct_buff_status()
-    return true
-end
-
 -- On addon load, check status immediately (handles user loading without buff or with wrong buff).
 ashita.events.register('load', 'cb_load', function()
-    if is_loading() then
-        return
-    end
-    local buffs = get_buffs()
-    last_buffs = buffs or {}
-    update_zone_and_check()
+    if is_loading() then return end
+    last_buffs = get_buffs() or {}
+    last_zone = get_zone()
+    check_and_correct_buff_status()
 end)
 
 ashita.events.register('packet_in', 'cb_packet_in', function(e)
@@ -288,30 +243,11 @@ ashita.events.register('packet_in', 'cb_packet_in', function(e)
         end
     elseif e.id == PKT_BUFF_UPDATE then
         local buffs = get_buffs()
-        if not buffs then
-            return
-        end
+        if not buffs then return end
         if buffs_changed(buffs, last_buffs) or pending_buff_check then
             pending_buff_check = false
             last_buffs = buffs
-
-            local current_buff = get_current_buff(buffs)
-            local zone_id = get_zone()
-            if not zone_id then
-                return
-            end
-
-            -- Skip non-combat zones and zones without required buffs
-            if zone_buffs.non_combat_zones[zone_id] then
-                return
-            end
-
-            local required_buff = get_required_buff(zone_id)
-            if not required_buff then
-                return
-            end
-
-            if is_world_ready() and (not current_buff or current_buff ~= required_buff) then
+            if is_world_ready() then
                 check_and_correct_buff_status()
             end
         end
